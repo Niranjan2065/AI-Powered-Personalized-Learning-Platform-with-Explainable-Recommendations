@@ -1,0 +1,192 @@
+// src/pages/RecommendationsPage.js
+import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
+import { toast } from 'react-toastify';
+import Navbar from '../components/common/Navbar';
+import { Spinner } from '../components/common/StatCard';
+import RecommendationCard from '../components/recommendations/RecommendationCard';
+import { getMyRecommendations, generateRecommendations, getMyAnalysis, dismissRecommendation } from '../utils/api';
+
+export default function RecommendationsPage() {
+  const [rec, setRec] = useState(null);
+  const [analysis, setAnalysis] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [generating, setGenerating] = useState(false);
+  const [noData, setNoData] = useState(false);
+
+  useEffect(() => {
+    const fetch = async () => {
+      try {
+        const [rRes, aRes] = await Promise.all([getMyRecommendations(), getMyAnalysis()]);
+        setRec(rRes.data.data);
+        setAnalysis(aRes.data.data);
+        if (!rRes.data.data) setNoData(true);
+      } catch {}
+      setLoading(false);
+    };
+    fetch();
+  }, []);
+
+  const handleGenerate = async () => {
+    setGenerating(true);
+    try {
+      const { data } = await generateRecommendations();
+      if (data.success) {
+        setRec(data.data);
+        setNoData(false);
+        toast.success('AI recommendations generated! 🤖');
+      } else {
+        toast.info(data.message);
+        setNoData(true);
+      }
+    } catch (err) { toast.error('Failed to generate recommendations'); }
+    setGenerating(false);
+  };
+
+  const handleDismiss = async (recId, itemId) => {
+    try {
+      await dismissRecommendation(recId, itemId);
+      setRec(prev => ({
+        ...prev,
+        recommendations: prev.recommendations.map(r => r._id === itemId ? {...r, isDismissed: true} : r)
+      }));
+    } catch {}
+  };
+
+  if (loading) return <><Navbar /><Spinner center /></>;
+
+  const activeRecs = rec?.recommendations?.filter(r => !r.isDismissed) || [];
+
+  return (
+    <div style={{ minHeight: '100vh', background: 'var(--bg)' }}>
+      <Navbar />
+      <div className="container" style={{ padding: '2rem 1.5rem' }}>
+        {/* Header */}
+        <div style={{ background: 'linear-gradient(135deg, #1e1b4b, #4f46e5)', color: '#fff', borderRadius: 'var(--radius-lg)', padding: '2rem', marginBottom: '2rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+            <div>
+              <div style={{ fontSize: '2rem', marginBottom: '.5rem' }}>🤖</div>
+              <h1 style={{ fontSize: '1.6rem', marginBottom: '.5rem' }}>AI Learning Path</h1>
+              <p style={{ opacity: .8, fontSize: '.9rem' }}>Personalized recommendations with transparent explanations</p>
+            </div>
+            <button onClick={handleGenerate} className="btn btn-lg" style={{ background: '#fff', color: '#4f46e5', fontWeight: 700 }} disabled={generating}>
+              {generating ? '🔄 Analyzing...' : '✨ Generate New Recommendations'}
+            </button>
+          </div>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 300px', gap: '1.5rem', alignItems: 'start' }}>
+          {/* Recommendations */}
+          <div>
+            {noData || activeRecs.length === 0 ? (
+              <div className="card" style={{ padding: '3rem', textAlign: 'center' }}>
+                <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>📊</div>
+                <h3 style={{ marginBottom: '.75rem' }}>No Recommendations Yet</h3>
+                <p style={{ color: 'var(--text-muted)', marginBottom: '1.5rem', fontSize: '.9rem' }}>
+                  {noData ? 'Complete some quizzes first, then click "Generate" to get personalized recommendations.' : 'Click the generate button to get your personalized learning path.'}
+                </p>
+                <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center' }}>
+                  <Link to="/courses" className="btn btn-outline">Browse Courses</Link>
+                  <button onClick={handleGenerate} className="btn btn-primary" disabled={generating}>
+                    {generating ? 'Analyzing...' : '🤖 Generate Recommendations'}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
+                  <h2 style={{ fontSize: '1.2rem' }}>
+                    Your Personalized Path
+                    <span style={{ background: 'var(--primary-light)', color: 'var(--primary)', borderRadius: 99, padding: '.15rem .6rem', fontSize: '.75rem', marginLeft: '.75rem', fontWeight: 700 }}>
+                      {activeRecs.length} items
+                    </span>
+                  </h2>
+                  <span style={{ fontSize: '.8rem', color: 'var(--text-muted)' }}>
+                    Generated by: <strong>{rec.generatedBy}</strong>
+                  </span>
+                </div>
+
+                {/* How AI Works - Explanation */}
+                <div className="xai-explanation" style={{ marginBottom: '1.5rem', padding: '1rem 1.25rem' }}>
+                  <span className="xai-icon">🧠</span>
+                  <div>
+                    <strong style={{ display: 'block', marginBottom: '.3rem', color: 'var(--primary)' }}>How AI Generated These Recommendations:</strong>
+                    <span style={{ fontSize: '.82rem' }}>
+                      The AI analyzed {rec.analysisSummary?.totalQuizzesAnalyzed || 0} quiz result(s) across your enrolled courses.
+                      It identified topics where your score was below 60% (weak areas) and found lessons that directly cover those topics.
+                      Each recommendation shows exactly WHY it was suggested.
+                    </span>
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                  {activeRecs.map(item => (
+                    <RecommendationCard
+                      key={item._id}
+                      item={item}
+                      onDismiss={() => handleDismiss(rec._id, item._id)}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Analysis Sidebar */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            {/* Overview */}
+            {rec?.analysisSummary && (
+              <div className="card" style={{ padding: '1.25rem' }}>
+                <h4 style={{ fontSize: '.95rem', marginBottom: '1rem' }}>📊 Performance Summary</h4>
+                <div style={{ textAlign: 'center', marginBottom: '1rem' }}>
+                  <div style={{ fontSize: '2.5rem', fontWeight: 800, color: rec.analysisSummary.overallScore >= 80 ? 'var(--secondary)' : rec.analysisSummary.overallScore >= 60 ? 'var(--accent)' : 'var(--danger)' }}>
+                    {rec.analysisSummary.overallScore}%
+                  </div>
+                  <div style={{ fontSize: '.8rem', color: 'var(--text-muted)' }}>Overall Score</div>
+                </div>
+                <div style={{ fontSize: '.82rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '.4rem' }}>
+                    <span style={{ color: 'var(--text-muted)' }}>Level detected</span>
+                    <span style={{ fontWeight: 600, textTransform: 'capitalize' }}>{rec.analysisSummary.detectedLevel}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: 'var(--text-muted)' }}>Quizzes analyzed</span>
+                    <span style={{ fontWeight: 600 }}>{rec.analysisSummary.totalQuizzesAnalyzed}</span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Weak Topics */}
+            {rec?.analysisSummary?.weakTopics?.length > 0 && (
+              <div className="card" style={{ padding: '1.25rem', borderLeft: '4px solid var(--danger)' }}>
+                <h4 style={{ fontSize: '.9rem', marginBottom: '.75rem', color: 'var(--danger)' }}>🔴 Needs Improvement</h4>
+                {rec.analysisSummary.weakTopics.map(t => (
+                  <div key={t.topic} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '.4rem', fontSize: '.8rem', textTransform: 'capitalize' }}>
+                    <span>{t.topic}</span>
+                    <span style={{ fontWeight: 700, color: 'var(--danger)' }}>{t.score}%</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Strong Topics */}
+            {rec?.analysisSummary?.strongTopics?.length > 0 && (
+              <div className="card" style={{ padding: '1.25rem', borderLeft: '4px solid var(--secondary)' }}>
+                <h4 style={{ fontSize: '.9rem', marginBottom: '.75rem', color: 'var(--secondary)' }}>🟢 Strong Areas</h4>
+                {rec.analysisSummary.strongTopics.map(t => (
+                  <div key={t.topic} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '.4rem', fontSize: '.8rem', textTransform: 'capitalize' }}>
+                    <span>{t.topic}</span>
+                    <span style={{ fontWeight: 700, color: 'var(--secondary)' }}>{t.score}%</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <Link to="/student" className="btn btn-ghost" style={{ justifyContent: 'center' }}>← Back to Dashboard</Link>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
