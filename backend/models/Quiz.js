@@ -1,8 +1,5 @@
 // models/Quiz.js
-// ─────────────────────────────────────────────────────────────
-// Unified schema for both manual and AI-generated quizzes.
-// isAIGenerated flag lets admins audit / filter AI content.
-// ─────────────────────────────────────────────────────────────
+
 const mongoose = require('mongoose');
 
 // ── Sub-schema: one answer option (MCQ) ──────────────────────

@@ -1,0 +1,147 @@
+/* pages/LoginPage.css */
+
+.login-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f5f4ef;
+  padding: 2rem;
+}
+
+.login-card {
+  background: #fff;
+  border: 1px solid #e8e8e4;
+  border-radius: 20px;
+  padding: 2.5rem 2rem;
+  width: 100%;
+  max-width: 420px;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.login-logo {
+  text-align: center;
+}
+
+.login-icon {
+  font-size: 36px;
+  color: #534ab7;
+  display: block;
+  margin-bottom: 8px;
+}
+
+.login-logo h1 {
+  font-size: 26px;
+  font-weight: 700;
+  color: #1a1a18;
+  margin: 0 0 6px;
+  letter-spacing: -0.02em;
+}
+
+.login-logo p {
+  font-size: 14px;
+  color: #888780;
+  margin: 0;
+}
+
+.login-section-label {
+  font-size: 12px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #888780;
+  margin: 0 0 10px;
+}
+
+.user-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.user-option {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border: 1px solid #e8e8e4;
+  border-radius: 10px;
+  background: #fff;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.15s, background 0.15s;
+  width: 100%;
+}
+
+.user-option:hover   { border-color: #afa9ec; background: #fafaf8; }
+.user-option.selected { border-color: #534ab7; background: #f7f6ff; }
+
+.user-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: #eeedfe;
+  color: #534ab7;
+  font-size: 15px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.user-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.user-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: #1a1a18;
+}
+
+.user-role-tag {
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: capitalize;
+  padding: 1px 7px;
+  border-radius: 20px;
+  width: fit-content;
+}
+
+.user-role-tag.student { background: #e1f5ee; color: #085041; }
+.user-role-tag.teacher { background: #faeeda; color: #633806; }
+
+.check {
+  color: #534ab7;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.login-btn {
+  background: #534ab7;
+  color: #fff;
+  border: none;
+  padding: 12px;
+  border-radius: 10px;
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, opacity 0.15s;
+}
+
+.login-btn:hover    { background: #3c3489; }
+.login-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.login-note {
+  font-size: 11px;
+  color: #b4b2a9;
+  text-align: center;
+  margin: 0;
+  line-height: 1.5;
+}

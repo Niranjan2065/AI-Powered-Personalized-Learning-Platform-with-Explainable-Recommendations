@@ -1,0 +1,67 @@
+/* components/teacher/StudentRow.css */
+
+.student-row td {
+  padding: 12px 14px;
+  border-bottom: 1px solid #f1efe8;
+  vertical-align: middle;
+  font-size: 14px;
+  color: #3d3d3a;
+}
+
+.student-row:last-child td { border-bottom: none; }
+.student-row:hover td { background: #fafaf8; }
+
+.td-id { font-weight: 500; color: #1a1a18; }
+
+.cluster-pill {
+  font-size: 11px;
+  font-weight: 500;
+  padding: 3px 10px;
+  border-radius: 20px;
+}
+
+.pill-blue   { background: #e6f1fb; color: #0c447c; }
+.pill-teal   { background: #e1f5ee; color: #085041; }
+.pill-amber  { background: #faeeda; color: #633806; }
+.pill-coral  { background: #faece7; color: #712b13; }
+.pill-purple { background: #eeedfe; color: #3c3489; }
+
+.score-tag {
+  font-size: 11px;
+  font-weight: 500;
+  padding: 3px 10px;
+  border-radius: 20px;
+}
+
+.score-good { background: #eaf3de; color: #27500a; }
+.score-mid  { background: #faeeda; color: #633806; }
+.score-poor { background: #faece7; color: #712b13; }
+
+.td-topics { display: flex; flex-wrap: wrap; gap: 4px; }
+
+.topic-chip {
+  font-size: 11px;
+  background: #f1efe8;
+  color: #5f5e5a;
+  padding: 2px 7px;
+  border-radius: 6px;
+}
+
+.weak-chip {
+  background: #faece7;
+  color: #993c1d;
+}
+
+.view-btn {
+  font-size: 13px;
+  color: #534ab7;
+  background: none;
+  border: 1px solid #afa9ec;
+  border-radius: 7px;
+  padding: 5px 12px;
+  cursor: pointer;
+  font-weight: 500;
+  transition: background 0.15s;
+}
+
+.view-btn:hover { background: #eeedfe; }

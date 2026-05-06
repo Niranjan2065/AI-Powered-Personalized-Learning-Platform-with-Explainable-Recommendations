@@ -1,0 +1,148 @@
+/* components/student/RecommendationCard.css */
+
+.rec-card {
+  background: #fff;
+  border: 1px solid #e8e8e4;
+  border-radius: 14px;
+  padding: 1.25rem 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  transition: box-shadow 0.2s;
+}
+
+.rec-card:hover {
+  box-shadow: 0 4px 20px rgba(0,0,0,0.07);
+}
+
+.rec-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.rec-rank {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: #eeedfe;
+  color: #534ab7;
+  font-size: 13px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.rec-topic {
+  font-size: 16px;
+  font-weight: 600;
+  color: #1a1a18;
+  margin: 0 0 4px;
+}
+
+.rec-badge {
+  font-size: 11px;
+  background: #eeedfe;
+  color: #3c3489;
+  padding: 2px 8px;
+  border-radius: 20px;
+  font-weight: 500;
+}
+
+.rec-reason {
+  display: flex;
+  gap: 10px;
+  background: #f7f6ff;
+  border-left: 3px solid #534ab7;
+  border-radius: 0 8px 8px 0;
+  padding: 10px 14px;
+  align-items: flex-start;
+}
+
+.reason-icon {
+  color: #534ab7;
+  font-size: 14px;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.rec-reason p {
+  font-size: 13px;
+  color: #3d3d3a;
+  margin: 0;
+  line-height: 1.6;
+}
+
+.rec-weak-note {
+  display: flex;
+  gap: 10px;
+  background: #fff8f0;
+  border-left: 3px solid #d85a30;
+  border-radius: 0 8px 8px 0;
+  padding: 10px 14px;
+  align-items: flex-start;
+}
+
+.weak-icon {
+  color: #d85a30;
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.rec-weak-note p {
+  font-size: 13px;
+  color: #3d3d3a;
+  margin: 0;
+  line-height: 1.6;
+}
+
+.shap-section {
+  background: #fafaf8;
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+
+.shap-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: #888780;
+  margin: 0 0 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.shap-legend {
+  font-size: 11px;
+  color: #888780;
+  margin: 8px 0 0;
+  display: flex;
+  gap: 1rem;
+}
+
+.shap-pos { color: #0f6e56; }
+.shap-neg { color: #993c1d; }
+
+.rec-start-btn {
+  align-self: flex-start;
+  background: #534ab7;
+  color: #fff;
+  border: none;
+  padding: 9px 20px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, transform 0.1s;
+}
+
+.rec-start-btn:hover {
+  background: #3c3489;
+  transform: translateY(-1px);
+}
+
+.rec-start-btn:active {
+  transform: translateY(0);
+}

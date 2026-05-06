@@ -316,4 +316,3 @@ npm run build        # Production build
 
 ---
 
-*Built with ❤️ — Node.js + Express + MongoDB + React + Rule-based AI*

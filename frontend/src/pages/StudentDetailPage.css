@@ -1,0 +1,227 @@
+/* pages/StudentDetailPage.css */
+
+.detail-page {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 2rem 1.5rem 4rem;
+}
+
+.detail-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  margin-bottom: 2rem;
+  flex-wrap: wrap;
+}
+
+.detail-header h1 {
+  font-size: 22px;
+  font-weight: 700;
+  color: #1a1a18;
+  margin: 0 0 4px;
+}
+
+.detail-subtitle {
+  font-size: 13px;
+  color: #888780;
+  margin: 0;
+}
+
+.detail-cluster-badge {
+  margin-left: auto;
+  font-size: 12px;
+  font-weight: 500;
+  background: #e1f5ee;
+  color: #085041;
+  padding: 4px 12px;
+  border-radius: 20px;
+  flex-shrink: 0;
+  align-self: center;
+}
+
+.back-btn {
+  background: none;
+  border: 1px solid #e8e8e4;
+  border-radius: 8px;
+  padding: 7px 14px;
+  font-size: 13px;
+  color: #5f5e5a;
+  cursor: pointer;
+  align-self: center;
+  flex-shrink: 0;
+  transition: background 0.15s;
+}
+
+.back-btn:hover { background: #f1efe8; }
+
+.detail-layout {
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  gap: 1.5rem;
+  align-items: start;
+}
+
+@media (max-width: 860px) {
+  .detail-layout { grid-template-columns: 1fr; }
+  .detail-sidebar { order: -1; }
+}
+
+.detail-main {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.detail-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  position: sticky;
+  top: 76px;
+}
+
+/* Reason box */
+.detail-reason-box {
+  background: #f7f6ff;
+  border: 1px solid #afa9ec;
+  border-radius: 12px;
+  padding: 1.25rem;
+}
+
+.reason-label {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #534ab7;
+  margin-bottom: 8px;
+}
+
+.detail-reason-box p {
+  font-size: 14px;
+  color: #3d3d3a;
+  margin: 0 0 6px;
+  line-height: 1.6;
+}
+
+.weak-note-text {
+  font-size: 13px !important;
+  color: #993c1d !important;
+}
+
+/* SHAP chart */
+.detail-chart-wrap {
+  background: #fff;
+  border: 1px solid #e8e8e4;
+  border-radius: 14px;
+  padding: 1.25rem 1.5rem;
+}
+
+/* LIME */
+.lime-panel {
+  background: #fff;
+  border: 1px solid #e8e8e4;
+  border-radius: 14px;
+  padding: 1.25rem 1.5rem;
+}
+
+.detail-section-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1a1a18;
+  margin: 0 0 6px;
+}
+
+.detail-section-sub {
+  font-size: 12px;
+  color: #888780;
+  margin: 0 0 1rem;
+  line-height: 1.5;
+}
+
+.lime-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.lime-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  gap: 12px;
+}
+
+.lime-pos { background: #eaf3de; }
+.lime-neg { background: #faece7; }
+
+.lime-condition {
+  color: #3d3d3a;
+  flex: 1;
+  font-family: monospace;
+  font-size: 12px;
+}
+
+.lime-weight {
+  font-weight: 600;
+  font-size: 13px;
+  flex-shrink: 0;
+}
+
+.lime-pos .lime-weight { color: #27500a; }
+.lime-neg .lime-weight { color: #712b13; }
+
+/* Rec list in sidebar */
+.detail-rec-list {
+  background: #fff;
+  border: 1px solid #e8e8e4;
+  border-radius: 14px;
+  padding: 1.25rem;
+}
+
+.detail-rec-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid #f1efe8;
+}
+
+.detail-rec-item:last-child { border-bottom: none; }
+
+.detail-rec-rank {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: #eeedfe;
+  color: #534ab7;
+  font-size: 11px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.detail-rec-name {
+  font-size: 14px;
+  color: #3d3d3a;
+}
+
+/* Error state */
+.detail-error {
+  max-width: 500px;
+  margin: 4rem auto;
+  text-align: center;
+  padding: 2rem;
+}
+
+.detail-error p {
+  font-size: 14px;
+  color: #3d3d3a;
+  margin-bottom: 1rem;
+}

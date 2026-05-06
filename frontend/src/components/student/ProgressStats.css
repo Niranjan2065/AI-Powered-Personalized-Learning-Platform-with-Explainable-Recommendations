@@ -1,0 +1,102 @@
+/* components/student/ProgressStats.css */
+
+.progress-stats {
+  background: #fff;
+  border: 1px solid #e8e8e4;
+  border-radius: 14px;
+  padding: 1.5rem;
+}
+
+.stats-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+
+.stats-header h2 {
+  font-size: 16px;
+  font-weight: 600;
+  color: #1a1a18;
+  margin: 0;
+}
+
+.cluster-badge {
+  font-size: 11px;
+  background: #e1f5ee;
+  color: #085041;
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-weight: 500;
+}
+
+.stats-sub {
+  font-size: 13px;
+  color: #888780;
+  margin: 0 0 1.25rem;
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 10px;
+}
+
+.stat-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+}
+
+.stat-card.stat-good  { background: #eaf3de; border-color: #c0dd97; }
+.stat-card.stat-mid   { background: #faeeda; border-color: #fac775; }
+.stat-card.stat-poor  { background: #faece7; border-color: #f5c4b3; }
+
+.stat-icon {
+  font-size: 16px;
+  flex-shrink: 0;
+  margin-top: 2px;
+  opacity: 0.7;
+}
+
+.stat-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.stat-label {
+  font-size: 11px;
+  font-weight: 500;
+  color: #5f5e5a;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.stat-value {
+  font-size: 18px;
+  font-weight: 600;
+  color: #1a1a18;
+  line-height: 1.2;
+}
+
+.stat-unit {
+  font-size: 12px;
+  font-weight: 400;
+  color: #888780;
+}
+
+.stat-note {
+  font-size: 10px;
+  color: #b4b2a9;
+}
+
+.stats-footnote {
+  font-size: 11px;
+  color: #b4b2a9;
+  margin: 1rem 0 0;
+  line-height: 1.5;
+}

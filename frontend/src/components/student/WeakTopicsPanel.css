@@ -1,0 +1,93 @@
+/* components/student/WeakTopicsPanel.css */
+
+.weak-panel {
+  background: #fff8f0;
+  border: 1px solid #f5c4b3;
+  border-radius: 14px;
+  padding: 1.25rem 1.5rem;
+}
+
+.weak-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.weak-panel-icon {
+  font-size: 16px;
+  color: #d85a30;
+}
+
+.weak-panel-header h3 {
+  font-size: 15px;
+  font-weight: 600;
+  color: #712b13;
+  margin: 0;
+}
+
+.weak-panel-sub {
+  font-size: 13px;
+  color: #993c1d;
+  margin: 0 0 1rem;
+  line-height: 1.5;
+}
+
+.weak-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.weak-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: #fff;
+  border: 1px solid #f5c4b3;
+  border-radius: 10px;
+  padding: 10px 14px;
+}
+
+.weak-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #d85a30;
+  flex-shrink: 0;
+}
+
+.weak-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.weak-topic-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: #1a1a18;
+}
+
+.weak-hint {
+  font-size: 11px;
+  color: #993c1d;
+}
+
+.weak-review-btn {
+  font-size: 13px;
+  color: #d85a30;
+  background: none;
+  border: 1px solid #f5c4b3;
+  border-radius: 7px;
+  padding: 5px 12px;
+  cursor: pointer;
+  font-weight: 500;
+  transition: background 0.15s;
+  flex-shrink: 0;
+}
+
+.weak-review-btn:hover {
+  background: #faece7;
+}

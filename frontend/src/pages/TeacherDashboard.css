@@ -1,0 +1,137 @@
+/* pages/TeacherDashboard.css */
+
+.teacher-page {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 2rem 1.5rem 4rem;
+}
+
+.teacher-header {
+  margin-bottom: 1.75rem;
+}
+
+.teacher-header h1 {
+  font-size: 24px;
+  font-weight: 700;
+  color: #1a1a18;
+  margin: 0 0 6px;
+  letter-spacing: -0.02em;
+}
+
+.teacher-subtitle {
+  font-size: 14px;
+  color: #888780;
+  margin: 0;
+}
+
+/* Summary cards */
+.teacher-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+  margin-bottom: 1.5rem;
+}
+
+.summary-card {
+  background: #fff;
+  border: 1px solid #e8e8e4;
+  border-radius: 12px;
+  padding: 1rem 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.summary-card.warn { border-color: #f5c4b3; background: #fff8f0; }
+.summary-card.good { border-color: #c0dd97; background: #f4f9ec; }
+
+.summary-num {
+  font-size: 28px;
+  font-weight: 700;
+  color: #1a1a18;
+  line-height: 1;
+}
+
+.summary-label {
+  font-size: 12px;
+  color: #888780;
+  font-weight: 500;
+}
+
+/* Filter */
+.teacher-filter {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+}
+
+.filter-btn {
+  font-size: 13px;
+  padding: 6px 14px;
+  border-radius: 20px;
+  border: 1px solid #e8e8e4;
+  background: #fff;
+  color: #5f5e5a;
+  cursor: pointer;
+  font-weight: 500;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.filter-btn:hover  { background: #f1efe8; border-color: #d3d1c7; }
+.filter-btn.active { background: #eeedfe; border-color: #afa9ec; color: #3c3489; }
+
+/* Table */
+.teacher-table-wrap {
+  background: #fff;
+  border: 1px solid #e8e8e4;
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.teacher-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.teacher-table thead tr {
+  background: #fafaf8;
+  border-bottom: 1px solid #e8e8e4;
+}
+
+.teacher-table th {
+  padding: 11px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #888780;
+  text-align: left;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.teacher-note {
+  font-size: 12px;
+  color: #b4b2a9;
+  margin: 1rem 0 0;
+  line-height: 1.5;
+}
+
+.teacher-error {
+  max-width: 500px;
+  margin: 4rem auto;
+  text-align: center;
+  padding: 2rem;
+}
+
+.teacher-error p {
+  font-size: 14px;
+  color: #3d3d3a;
+  margin: 0 0 8px;
+}
+
+.teacher-error code {
+  background: #f1efe8;
+  padding: 2px 6px;
+  border-radius: 5px;
+  font-size: 12px;
+}
