@@ -397,3 +397,11 @@ exports.getCourseAnalytics = async (req, res) => {
     },
   });
 };
+// GET /api/quizzes/course/:courseId
+exports.getQuizzesByCourse = async (req, res) => {
+  const quizzes = await Quiz.find({
+    course: req.params.courseId,
+    isPublished: true,
+  }).populate('lesson', 'title order module').sort({ createdAt: 1 }).lean();
+  res.json({ success: true, count: quizzes.length, data: quizzes });
+};

@@ -1,241 +1,290 @@
-/**
- * pages/RecommendationsPage.jsx — FIXED
- *
- * BUGS FIXED:
- * 1. No empty-state for students with 0 quiz attempts — now shows CTA
- * 2. XAI feature bars had no CSS — fully styled inline
- * 3. generateRecommendations() error left page blank — now shows helpful UI
- * 4. Used shared/Navbar — now unified Navbar
- */
-import React, { useState, useEffect } from "react";
-import { Link } from "react-router-dom";
-import { toast } from "react-toastify";
-import Navbar from "../components/common/Navbar";
-import { useAuth } from "../context/AuthContext";
-import axios from "axios";
+// pages/RecommendationsPage.jsx — Full XAI Dashboard with explanations
+import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
+import { toast } from 'react-toastify';
+import Navbar from '../components/common/Navbar';
+import { useAuth } from '../context/AuthContext';
+import axios from 'axios';
 
-const api = axios.create({ baseURL: "/api" });
-api.interceptors.request.use((c) => {
-  const t = localStorage.getItem("token");
+const api = axios.create({ baseURL: '/api' });
+api.interceptors.request.use(c => {
+  const t = localStorage.getItem('token');
   if (t) c.headers.Authorization = `Bearer ${t}`;
   return c;
 });
 
-const Spinner = () => (
-  <div style={{
-    width: 32, height: 32, border: "3px solid var(--border)",
-    borderTopColor: "var(--primary)", borderRadius: "50%",
-    animation: "spin 0.7s linear infinite", margin: "3rem auto",
-  }} />
+const Spin = () => (
+  <div style={{ width:32, height:32, border:'3px solid var(--border)', borderTopColor:'var(--primary)', borderRadius:'50%', animation:'spin .7s linear infinite', margin:'3rem auto' }} />
 );
 
-const XAIBar = ({ label, weight, color = "var(--primary)" }) => (
-  <div style={{ display: "flex", alignItems: "center", gap: ".6rem", marginBottom: ".45rem" }}>
-    <span style={{ fontSize: ".75rem", color: "var(--text-secondary)", width: 110, flexShrink: 0 }}>
-      {label}
-    </span>
-    <div style={{ flex: 1, background: "var(--border)", borderRadius: 99, height: 7, overflow: "hidden" }}>
-      <div style={{
-        width: `${Math.round(weight * 100)}%`, height: "100%",
-        background: color, borderRadius: 99, transition: "width .6s ease",
-      }} />
-    </div>
-    <span style={{ fontSize: ".72rem", color: "var(--text-muted)", width: 35, textAlign: "right", flexShrink: 0 }}>
-      {Math.round(weight * 100)}%
-    </span>
+const ProgressBar = ({ pct, color='var(--primary)', height=8 }) => (
+  <div style={{ background:'var(--border)', borderRadius:99, height, overflow:'hidden', flex:1 }}>
+    <div style={{ width:`${Math.min(100,pct||0)}%`, height:'100%', background:color, borderRadius:99, transition:'width .6s ease' }} />
   </div>
 );
 
+const XAIBar = ({ label, pct, color='var(--primary)' }) => (
+  <div style={{ display:'flex', alignItems:'center', gap:'.6rem', marginBottom:'.4rem' }}>
+    <span style={{ fontSize:'.73rem', color:'var(--text-secondary)', width:110, flexShrink:0, textTransform:'capitalize' }}>{label}</span>
+    <ProgressBar pct={pct} color={color} />
+    <span style={{ fontSize:'.7rem', color:'var(--text-muted)', width:35, textAlign:'right', flexShrink:0 }}>{Math.round(pct)}%</span>
+  </div>
+);
+
+// Safe string coercion helper
+const safeStr = (v, fallback = '') => (typeof v === 'string' ? v : fallback);
+
 const priorityColors = {
-  high:   { badge: "#EDE9FE", text: "#5B21B6", border: "var(--primary)" },
-  medium: { badge: "#D1FAE5", text: "#065F46", border: "var(--secondary)" },
-  low:    { badge: "#FEF3C7", text: "#92400E", border: "var(--accent)" },
+  high:   { bg:'#EDE9FE', text:'#5B21B6', border:'var(--primary)' },
+  medium: { bg:'#D1FAE5', text:'#065F46', border:'var(--secondary)' },
+  low:    { bg:'#FEF3C7', text:'#92400E', border:'var(--accent)' },
 };
 
 export default function RecommendationsPage() {
   const { user } = useAuth();
-  const [recs, setRecs]       = useState([]);
-  const [xai, setXai]         = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [noData, setNoData]   = useState(false);
-  const [regenerating, setRegenerating] = useState(false);
+  const [recs,       setRecs]       = useState([]);
+  const [analysis,   setAnalysis]   = useState(null);
+  const [loading,    setLoading]    = useState(true);
+  const [generating, setGenerating] = useState(false);
+  const [noData,     setNoData]     = useState(false);
 
-  const load = async () => {
+  const loadData = async () => {
     setLoading(true);
-    setNoData(false);
     try {
-      const { data } = await api.get("/recommendations/my");
-      if (data.data && data.data.length > 0) {
-        setRecs(data.data);
-        setXai(data.xai || null);
-      } else {
-        // Try to generate
-        await generate(false);
+      const [recRes, anRes] = await Promise.allSettled([
+        api.get('/recommendations/my'),
+        api.get('/recommendations/analysis'),
+      ]);
+      if (recRes.status === 'fulfilled') {
+        const d = recRes.value.data;
+        // Handle all response shapes: array, {recommendations:[]}, or null
+        const raw = d.data;
+        let recsArr = [];
+        if (Array.isArray(raw)) recsArr = raw;
+        else if (Array.isArray(raw?.recommendations)) recsArr = raw.recommendations;
+        else if (Array.isArray(raw?.items)) recsArr = raw.items;
+        setRecs(recsArr);
+        if (!raw) setNoData(true);
       }
-    } catch {
-      await generate(false);
-    } finally {
-      setLoading(false);
-    }
+      if (anRes.status === 'fulfilled') {
+        const d = anRes.value.data;
+        setAnalysis(d.data?.hasData ? d.data : null);
+        if (!d.data?.hasData) setNoData(true);
+      }
+    } catch { toast.error('Failed to load recommendations'); }
+    setLoading(false);
   };
 
-  const generate = async (showToast = true) => {
-    setRegenerating(true);
+  useEffect(() => { loadData(); }, []);
+
+  const handleGenerate = async () => {
+    setGenerating(true);
     try {
-      const { data } = await api.post("/recommendations/generate");
-      setRecs(data.data || []);
-      setXai(data.xai || null);
-      if (showToast) toast.success("✨ Recommendations refreshed!");
-    } catch (err) {
-      const msg = err.response?.data?.message || "";
-      if (msg.includes("quiz") || msg.includes("data")) {
+      const { data } = await api.post('/recommendations/generate');
+      if (data.success) {
+        toast.success('New personalized learning path generated! 🤖');
+        const rawRecs = data.data;
+        let newRecs = [];
+        if (Array.isArray(rawRecs)) newRecs = rawRecs;
+        else if (Array.isArray(rawRecs?.recommendations)) newRecs = rawRecs.recommendations;
+        setRecs(newRecs);
+        setNoData(false);
+        await loadData();
+      } else {
+        toast.info(data.message || 'Not enough data. Complete some quizzes first.');
         setNoData(true);
-      } else {
-        toast.error("Failed to generate recommendations");
       }
-    } finally {
-      setRegenerating(false);
-      setLoading(false);
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Generation failed');
     }
+    setGenerating(false);
   };
-
-  useEffect(() => { load(); }, []);
-
-  const defaultXAI = [
-    { label: "Quiz Score",   weight: 0.42, color: "var(--primary)" },
-    { label: "Weak Topics",  weight: 0.28, color: "#EF4444" },
-    { label: "Completion %", weight: 0.18, color: "var(--secondary)" },
-    { label: "Time Spent",   weight: 0.12, color: "var(--accent)" },
-  ];
 
   return (
-    <div style={{ minHeight: "100vh", background: "var(--bg)" }}>
+    <div style={{ minHeight:'100vh', background:'var(--bg)' }}>
       <Navbar />
-      <div className="container" style={{ padding: "2rem 1.5rem" }}>
+      <div className="container" style={{ padding:'2rem 1.5rem' }}>
 
-        {/* Hero */}
-        <div style={{
-          background: "linear-gradient(135deg, #1e1b4b, #4f46e5)",
-          borderRadius: "var(--radius-lg)", color: "#fff",
-          padding: "2rem", marginBottom: "2rem",
-          display: "flex", justifyContent: "space-between",
-          alignItems: "center", flexWrap: "wrap", gap: "1rem",
-        }}>
+        {/* Header */}
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'2rem', flexWrap:'wrap', gap:'1rem' }}>
           <div>
-            <div style={{ fontSize: "2rem", marginBottom: ".35rem" }}>🤖</div>
-            <h1 style={{ fontSize: "1.5rem", marginBottom: ".3rem" }}>AI Learning Path</h1>
-            <p style={{ opacity: .8, fontSize: ".875rem" }}>
-              Personalised recommendations powered by your quiz performance
+            <h1 style={{ fontSize:'1.5rem', marginBottom:'.25rem' }}>🤖 AI Learning Path</h1>
+            <p style={{ color:'var(--text-muted)', fontSize:'.875rem' }}>
+              Personalized recommendations based on your performance · Powered by Explainable AI
             </p>
           </div>
-          <button className="btn"
-            style={{ background: "#fff", color: "#4f46e5", fontWeight: 700 }}
-            onClick={() => generate(true)}
-            disabled={regenerating}>
-            {regenerating ? "Analysing…" : "✨ Refresh Recommendations"}
+          <button className="btn btn-primary" onClick={handleGenerate} disabled={generating || loading}>
+            {generating ? '🔄 Generating…' : '⚡ Generate New Path'}
           </button>
         </div>
 
-        {loading ? <Spinner /> : noData ? (
-          /* ── BUG FIX: Empty state for 0 quiz attempts ── */
-          <div className="card" style={{ padding: "3rem", textAlign: "center", maxWidth: 520, margin: "0 auto" }}>
-            <div style={{ fontSize: "3rem", marginBottom: "1rem" }}>📝</div>
-            <h2 style={{ marginBottom: ".75rem" }}>No quiz data yet</h2>
-            <p style={{ color: "var(--text-muted)", marginBottom: "1.5rem", lineHeight: 1.6 }}>
-              The AI needs at least one completed quiz to generate personalised recommendations.
-              Take a quiz in any of your enrolled courses to get started!
-            </p>
-            <div style={{ display: "flex", gap: ".75rem", justifyContent: "center", flexWrap: "wrap" }}>
-              <Link to="/courses" className="btn btn-outline">Browse Courses</Link>
-              <Link to="/student" className="btn btn-primary">View My Courses →</Link>
-            </div>
-          </div>
-        ) : (
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 280px", gap: "1.5rem", alignItems: "start" }}>
-
-            {/* Recommendations */}
-            <div>
-              {recs.length === 0 ? (
-                <div className="card" style={{ padding: "2rem", textAlign: "center", color: "var(--text-muted)" }}>
-                  <p>No recommendations found.</p>
-                </div>
-              ) : recs.map((r, i) => {
-                const p = r.priority || (i === 0 ? "high" : i === 1 ? "medium" : "low");
-                const pc = priorityColors[p] || priorityColors.low;
-                const course = r.course || {};
-                return (
-                  <div key={r._id || i} className="card"
-                    style={{ padding: "1.25rem", marginBottom: "1rem", borderLeft: `3px solid ${pc.border}` }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", gap: "1rem", marginBottom: ".75rem" }}>
-                      <div style={{ flex: 1 }}>
-                        <span style={{ background: pc.badge, color: pc.text, borderRadius: 99, padding: ".2rem .6rem", fontSize: ".68rem", fontWeight: 700, display: "inline-block", marginBottom: ".4rem" }}>
-                          {p.toUpperCase()} PRIORITY
-                        </span>
-                        <h3 style={{ fontSize: "1rem", marginBottom: ".2rem" }}>{course.title || r.reason}</h3>
-                        <div style={{ fontSize: ".75rem", color: "var(--text-muted)", textTransform: "capitalize" }}>
-                          {course.category?.replace(/-/g, " ")} · {course.level}
-                        </div>
-                      </div>
-                      <div style={{ fontWeight: 800, fontSize: "1.1rem", color: course.isFree ? "var(--secondary)" : "var(--text-primary)", flexShrink: 0 }}>
-                        {course.isFree ? "FREE" : course.price ? `$${course.price}` : ""}
-                      </div>
-                    </div>
-
-                    {r.reason && (
-                      <div className="xai-explanation" style={{ marginBottom: ".85rem" }}>
-                        <span className="xai-icon">💡</span>
-                        <div><strong>Why: </strong>{r.reason}</div>
-                      </div>
-                    )}
-
-                    {r.xaiExplanation && (
-                      <div style={{ marginBottom: ".85rem" }}>
-                        <div style={{ fontSize: ".72rem", fontWeight: 700, color: "var(--text-muted)", marginBottom: ".4rem" }}>
-                          XAI — Feature Importance:
-                        </div>
-                        {Object.entries(r.xaiExplanation).map(([k, v]) => (
-                          <XAIBar key={k} label={k.replace(/_/g, " ")} weight={v} />
-                        ))}
-                      </div>
-                    )}
-
-                    <div style={{ display: "flex", gap: ".5rem" }}>
-                      {course._id && <Link to={`/courses/${course._id}`} className="btn btn-primary btn-sm">Enroll Now →</Link>}
-                      {course._id && <Link to={`/courses/${course._id}`} className="btn btn-outline btn-sm">View Details</Link>}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* Sidebar */}
-            <div>
-              <div className="card" style={{ padding: "1.25rem", marginBottom: "1rem" }}>
-                <h3 style={{ fontSize: ".95rem", marginBottom: ".75rem" }}>🧠 Why These?</h3>
-                <p style={{ fontSize: ".8rem", color: "var(--text-muted)", marginBottom: "1rem" }}>
-                  Feature importance from the AI model:
+        {loading ? <Spin /> : (
+          <>
+            {/* No Data State */}
+            {noData && !analysis && (
+              <div className="card" style={{ padding:'3rem', textAlign:'center', maxWidth:540, margin:'0 auto' }}>
+                <div style={{ fontSize:'4rem', marginBottom:'1rem' }}>📊</div>
+                <h2 style={{ fontSize:'1.25rem', marginBottom:'.75rem' }}>No Data Yet</h2>
+                <p style={{ color:'var(--text-muted)', lineHeight:1.65, marginBottom:'1.5rem' }}>
+                  Complete at least one quiz to get your personalized AI-powered learning path with explainable recommendations.
                 </p>
-                {(xai?.features || defaultXAI).map((f) => (
-                  <XAIBar key={f.label} label={f.label} weight={f.weight} color={f.color} />
-                ))}
+                <div style={{ display:'flex', gap:'.75rem', justifyContent:'center', flexWrap:'wrap' }}>
+                  <Link to="/courses" className="btn btn-primary">Browse Courses</Link>
+                  <Link to="/student" className="btn btn-outline">Dashboard</Link>
+                </div>
               </div>
+            )}
 
-              <div className="card" style={{ padding: "1.25rem" }}>
-                <h3 style={{ fontSize: ".95rem", marginBottom: ".75rem" }}>📊 Your Stats</h3>
-                {[
-                  ["Avg Score", xai?.avgScore ? `${Math.round(xai.avgScore)}%` : "—"],
-                  ["Quizzes",   xai?.quizCount ?? "—"],
-                  ["Enrolled",  xai?.enrolled  ?? "—"],
-                  ["Weak Topics", xai?.weakTopics?.length ?? "—"],
-                ].map(([l, v]) => (
-                  <div key={l} style={{ display: "flex", justifyContent: "space-between", padding: ".5rem 0", borderBottom: "1px solid var(--border)", fontSize: ".82rem" }}>
-                    <span style={{ color: "var(--text-muted)" }}>{l}</span>
-                    <span style={{ fontWeight: 700 }}>{v}</span>
+            {analysis && (
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'1.5rem', marginBottom:'2rem' }}>
+
+                {/* Overall Score */}
+                <div className="card" style={{ padding:'1.5rem' }}>
+                  <h3 style={{ fontSize:'1rem', marginBottom:'1rem' }}>📈 Performance Overview</h3>
+                  <div style={{ display:'flex', gap:'1.5rem', flexWrap:'wrap', marginBottom:'1.25rem' }}>
+                    {[
+                      { label:'Overall Score', val:`${analysis.overallScore}%`, color: analysis.overallScore >= 80 ? 'var(--secondary)' : analysis.overallScore >= 60 ? 'var(--accent)' : 'var(--danger)' },
+                      { label:'Quizzes Taken', val: analysis.stats?.totalQuizzesTaken || 0, color:'var(--primary)' },
+                      { label:'Passed', val: analysis.stats?.quizzesPassed || 0, color:'var(--secondary)' },
+                    ].map(s => (
+                      <div key={s.label}>
+                        <div style={{ fontSize:'1.75rem', fontWeight:800, color:s.color }}>{s.val}</div>
+                        <div style={{ fontSize:'.72rem', color:'var(--text-muted)' }}>{s.label}</div>
+                      </div>
+                    ))}
                   </div>
-                ))}
+
+                  {/* Weak Topics */}
+                  {analysis.weakTopics?.length > 0 && (
+                    <div style={{ marginBottom:'1rem' }}>
+                      <div style={{ fontSize:'.78rem', fontWeight:700, color:'var(--danger)', marginBottom:'.5rem' }}>🔴 Topics Needing Improvement</div>
+                      {analysis.weakTopics.map(t => (
+                        <XAIBar key={t.topic} label={t.topic} pct={t.percentage} color="var(--danger)" />
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Strong Topics */}
+                  {analysis.strongTopics?.length > 0 && (
+                    <div>
+                      <div style={{ fontSize:'.78rem', fontWeight:700, color:'var(--secondary)', marginBottom:'.5rem' }}>🟢 Strong Topics</div>
+                      {analysis.strongTopics.map(t => (
+                        <XAIBar key={t.topic} label={t.topic} pct={t.percentage} color="var(--secondary)" />
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Recent History */}
+                <div className="card" style={{ padding:'1.5rem' }}>
+                  <h3 style={{ fontSize:'1rem', marginBottom:'1rem' }}>📝 Quiz History</h3>
+                  {analysis.recentHistory?.length > 0 ? analysis.recentHistory.slice(0, 6).map((r, i) => (
+                    <div key={i} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'.55rem 0', borderBottom: i < 5 ? '1px solid var(--border)' : 'none' }}>
+                      <div>
+                        <div style={{ fontSize:'.82rem', fontWeight:500 }}>{r.quizTitle}</div>
+                        <div style={{ fontSize:'.7rem', color:'var(--text-muted)' }}>{r.courseTitle}</div>
+                      </div>
+                      <div style={{ textAlign:'right' }}>
+                        <div style={{ fontSize:'.9rem', fontWeight:700, color: r.score >= 70 ? 'var(--secondary)' : 'var(--danger)' }}>
+                          {Math.round(r.score||0)}%
+                        </div>
+                        <div style={{ fontSize:'.65rem', color: r.passed ? 'var(--secondary)' : 'var(--danger)' }}>
+                          {r.passed ? '✓ Passed' : '✗ Failed'}
+                        </div>
+                      </div>
+                    </div>
+                  )) : (
+                    <p style={{ color:'var(--text-muted)', fontSize:'.85rem' }}>No quiz history yet.</p>
+                  )}
+                </div>
               </div>
-            </div>
-          </div>
+            )}
+
+            {/* AI Recommendations */}
+            {recs.length > 0 && (
+              <div>
+                <h2 style={{ fontSize:'1.15rem', marginBottom:'1rem' }}>🎯 Your Personalized Learning Path</h2>
+                <div style={{ display:'flex', flexDirection:'column', gap:'1rem' }}>
+                  {recs.map((rec, i) => {
+                    // Safely coerce priority to a plain string
+                    const priority = typeof rec.priority === 'string' ? rec.priority : 'medium';
+                    const c = priorityColors[priority] || priorityColors.medium;
+                    return (
+                      <div key={rec._id || i} className="card" style={{ padding:'1.25rem', borderLeft:`4px solid ${c.border}` }}>
+                        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:'1rem', flexWrap:'wrap' }}>
+                          <div style={{ flex:1 }}>
+                            <div style={{ display:'flex', alignItems:'center', gap:'.5rem', marginBottom:'.4rem' }}>
+                              <span style={{ padding:'.15rem .55rem', borderRadius:99, fontSize:'.65rem', fontWeight:700, background:c.bg, color:c.text }}>
+                                {priority.toUpperCase()}
+                              </span>
+                              <span style={{ fontSize:'.72rem', color:'var(--text-muted)', textTransform:'uppercase', fontWeight:600 }}>
+                                {safeStr(rec.type, 'resource')}
+                              </span>
+                            </div>
+                            <h3 style={{ fontSize:'.95rem', marginBottom:'.4rem' }}>{safeStr(rec.itemTitle, 'Recommended Resource')}</h3>
+
+                            {/* XAI Explanation */}
+                            {safeStr(rec.explanation) && (
+                              <div className="xai-explanation">
+                                <span className="xai-icon">💡</span>
+                                <span>{safeStr(rec.explanation)}</span>
+                              </div>
+                            )}
+
+                            {/* Reason Factors */}
+                            {rec.reasonFactors?.length > 0 && (
+                              <div style={{ marginTop:'.75rem' }}>
+                                <div style={{ fontSize:'.72rem', fontWeight:700, color:'var(--text-muted)', marginBottom:'.4rem' }}>WHY THIS WAS RECOMMENDED:</div>
+                                {rec.reasonFactors.map((f, fi) => (
+                                  <div key={fi} style={{ display:'flex', alignItems:'center', gap:'.5rem', marginBottom:'.25rem', fontSize:'.75rem' }}>
+                                    <span style={{ color:'var(--primary)' }}>→</span>
+                                    <span style={{ color:'var(--text-secondary)' }}>{f.description}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+
+                            {safeStr(rec.addressesTopic) && (
+                              <div style={{ marginTop:'.5rem', fontSize:'.73rem', color:'var(--text-muted)' }}>
+                                📌 Targets weak topic: <strong style={{ color:'var(--danger)', textTransform:'capitalize' }}>{safeStr(rec.addressesTopic)}</strong>
+                              </div>
+                            )}
+                          </div>
+
+                          <div style={{ textAlign:'right', flexShrink:0 }}>
+                            <div style={{ fontSize:'.72rem', color:'var(--text-muted)', marginBottom:'.5rem' }}>
+                              Confidence: <strong style={{ color:'var(--primary)' }}>{(typeof rec.confidence === 'number' ? rec.confidence : 70)}%</strong>
+                            </div>
+                            {rec.isDismissed ? (
+                              <span style={{ fontSize:'.75rem', color:'var(--text-muted)' }}>Dismissed</span>
+                            ) : (
+                              <Link to={`/courses`} className="btn btn-primary btn-sm">
+                                Start Learning →
+                              </Link>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* No Recs but has data */}
+            {recs.length === 0 && analysis && (
+              <div className="card" style={{ padding:'2.5rem', textAlign:'center' }}>
+                <div style={{ fontSize:'3rem', marginBottom:'1rem' }}>✨</div>
+                <h3 style={{ marginBottom:'.5rem' }}>Generate Your Learning Path</h3>
+                <p style={{ color:'var(--text-muted)', marginBottom:'1.5rem' }}>
+                  Click the button above to generate AI-powered personalized recommendations based on your quiz performance.
+                </p>
+                <button className="btn btn-primary" onClick={handleGenerate} disabled={generating}>
+                  {generating ? '🔄 Generating…' : '⚡ Generate Learning Path'}
+                </button>
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>

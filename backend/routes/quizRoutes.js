@@ -11,6 +11,7 @@ const {
   saveGeneratedQuiz,
   createQuiz,
   getQuizzesByLesson,
+  getQuizzesByCourse,
   getQuiz,
   getQuizFull,
   updateQuiz,
@@ -39,6 +40,9 @@ router.post('/save-generated',   protect, authorize('tutor', 'admin'), saveGener
 
 // ANALYTICS
 router.get('/analytics/course/:courseId', protect, authorize('tutor', 'admin'), getCourseAnalytics);
+
+// COURSE QUIZZES (for QuizListPage)
+router.get('/course/:courseId', protect, getQuizzesByCourse);
 
 // LESSON QUIZZES
 router.get('/lesson/:lessonId', protect, getQuizzesByLesson);
