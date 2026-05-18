@@ -1,136 +1,247 @@
-// controllers/recommendationController.js — Fixed: uses QuizAttempt (not Result)
+// controllers/recommendationController.js
+// Phase 11: ML-powered recommendations with rule-based fallback.
 const Recommendation = require('../models/Recommendation');
-const QuizAttempt   = require('../models/QuizAttempt');
+const QuizAttempt    = require('../models/QuizAttempt');
 const Progress       = require('../models/Progress');
 const Enrollment     = require('../models/Enrollment');
-const { generateRecommendations, getLatestRecommendation, aggregateTopicPerformance } = require('../ai/recommendationEngine');
-const User = require('../models/User');
+const Lesson         = require('../models/Lesson');
+const Quiz           = require('../models/Quiz');
+const User           = require('../models/User');
+
+const {
+  generateRecommendations: generateRuleBased,
+  getLatestRecommendation,
+  aggregateTopicPerformance,
+} = require('../ai/recommendationEngine');
+
+const {
+  getMLRecommendations,
+  triggerMLTraining,
+  isMLServiceUp,
+  getTopicName,
+  exportInteractionsCSV,
+} = require('../services/mlBridgeService');
+
+const RECOMMENDATION_EXPIRY_DAYS = 7;
+const MAX_RECOMMENDATIONS        = 8;
 
 // POST /api/recommendations/generate
 const generateMyRecommendations = async (req, res, next) => {
   try {
-    const result = await generateRecommendations(req.user._id);
+    const studentId = req.user._id;
+    console.log(`🤖 Generating recommendations for student ${studentId}`);
 
-    if (!result.success) {
-      return res.status(200).json({ success: false, message: result.message, needsMoreData: true });
+    let mlResult = null;
+    const mlUp   = await isMLServiceUp();
+
+    if (mlUp) {
+      console.log('🐍 ML service is up — attempting ML recommendations');
+      mlResult = await getMLRecommendations(studentId.toString());
+
+      if (!mlResult) {
+        console.log('📊 Student not in ML matrix — exporting data and training…');
+        const { rowCount } = await exportInteractionsCSV();
+        if (rowCount >= 3) {
+          const trainResult = await triggerMLTraining();
+          if (trainResult.success) {
+            mlResult = await getMLRecommendations(studentId.toString());
+          } else {
+            console.warn('[ML] Training failed:', trainResult.message);
+          }
+        }
+      }
+    } else {
+      console.log('⚠️  ML service offline — using rule-based engine');
     }
 
-    const detectedLevel = result.data.analysisSummary?.detectedLevel;
-    if (detectedLevel) await User.findByIdAndUpdate(req.user._id, { learningLevel: detectedLevel });
+    let recommendation;
+    if (mlResult) {
+      recommendation = await buildRecommendationFromML(studentId, mlResult);
+    } else {
+      const result = await generateRuleBased(studentId);
+      if (!result.success) {
+        return res.status(200).json({ success: false, message: result.message, needsMoreData: true });
+      }
+      recommendation = result.data;
+    }
 
-    res.status(200).json({ success: true, message: 'Personalized learning path generated!', data: result.data });
+    const detectedLevel = recommendation.analysisSummary?.detectedLevel;
+    if (detectedLevel) {
+      await User.findByIdAndUpdate(studentId, { learningLevel: detectedLevel });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Personalized learning path generated!',
+      data:    recommendation,
+      engine:  mlResult ? 'ml-v1' : 'rule-based-v1',
+    });
   } catch (error) { next(error); }
 };
 
-// GET /api/recommendations/my
+async function buildRecommendationFromML(studentId, mlData) {
+  const {
+    recommended_topics = [], weak_topics = [], cluster,
+    explanation = {},
+  } = mlData;
+
+  const weakTopicNames = weak_topics.map(id => getTopicName(id));
+  const recTopicNames  = recommended_topics.map(id => getTopicName(id));
+
+  const enrollments       = await Enrollment.find({ student: studentId }).populate('course');
+  const validEnrollments  = enrollments.filter(e => e.course != null);
+  const courseIds         = validEnrollments.map(e => e.course._id);
+
+  const progressRecords = await Progress.find({ student: studentId, isCompleted: true });
+  const completedIds    = new Set(progressRecords.map(p => p.lesson.toString()));
+
+  const attempts = await QuizAttempt.find({ student: studentId }).sort({ createdAt: -1 }).limit(50);
+  const topicStats   = aggregateTopicPerformance(attempts);
+  const overallScore = Object.values(topicStats).length
+    ? Math.round(Object.values(topicStats).reduce((s, t) => s + t.percentage, 0) / Object.values(topicStats).length)
+    : 0;
+
+  const weakTopicsSummary   = [];
+  const strongTopicsSummary = [];
+  Object.entries(topicStats).forEach(([topic, stats]) => {
+    const entry = { topic, score: stats.percentage, quizzesTaken: stats.total };
+    if (stats.percentage < 60) weakTopicsSummary.push(entry);
+    else if (stats.percentage >= 80) strongTopicsSummary.push(entry);
+  });
+
+  const items = [];
+  const targetTopics = [...new Set([...weakTopicNames, ...recTopicNames])];
+
+  if (targetTopics.length > 0) {
+    const lessons = await Lesson.find({
+      course: { $in: courseIds }, topics: { $in: targetTopics }, isPublished: true,
+    }).populate('course', 'title level').populate('module', 'title').limit(20);
+
+    for (const lesson of lessons) {
+      if (!lesson?._id || completedIds.has(lesson._id.toString())) continue;
+      const coveredWeak = weakTopicNames.filter(t => lesson.topics?.includes(t));
+      const coveredRec  = recTopicNames.filter(t => lesson.topics?.includes(t));
+      if (!coveredWeak.length && !coveredRec.length) continue;
+
+      const primaryTopic = coveredWeak[0] || coveredRec[0];
+      const topicScore   = topicStats[primaryTopic]?.percentage ?? 50;
+      const confidence   = Math.min(99, Math.round(100 - topicScore + coveredWeak.length * 5));
+
+      const shapContribs    = explanation.shap_contributions || {};
+      const topShapFeature  = Object.keys(shapContribs).sort((a, b) => Math.abs(shapContribs[b]) - Math.abs(shapContribs[a]))[0];
+
+      let xaiExplanation = explanation.human_readable
+        ? explanation.human_readable
+        : `This lesson is recommended because you need improvement in "${primaryTopic}".`;
+      if (topShapFeature && shapContribs[topShapFeature] < 0) {
+        xaiExplanation += ` (ML detected: ${topShapFeature.toLowerCase()} is your key improvement area.)`;
+      }
+
+      const reasonFactors = [];
+      if (topicScore < 60) reasonFactors.push({ factor: 'ml_weak_topic', value: topicScore, description: `ML model flagged "${primaryTopic}" as weak (score: ${topicScore}%)` });
+      if (topShapFeature) reasonFactors.push({ factor: 'shap_top_feature', value: shapContribs[topShapFeature], description: `SHAP analysis: "${topShapFeature}" most influenced this recommendation` });
+      if (cluster !== undefined) reasonFactors.push({ factor: 'ml_cluster', value: cluster, description: `You are grouped with similar learners in cluster ${cluster} (KMeans)` });
+
+      items.push({ type: 'lesson', itemId: lesson._id, itemModel: 'Lesson', explanation: xaiExplanation, addressesTopic: primaryTopic, confidence, priority: Math.round((100 - topicScore) / 10), reasonFactors });
+      if (items.length >= MAX_RECOMMENDATIONS) break;
+    }
+  }
+
+  if (weakTopicNames.length > 0 && items.length < MAX_RECOMMENDATIONS) {
+    const quizzes = await Quiz.find({ course: { $in: courseIds }, topicsTested: { $in: weakTopicNames }, isPublished: true }).populate('course', 'title').limit(5);
+    for (const quiz of quizzes) {
+      if (!quiz?._id) continue;
+      const primaryTopic = weakTopicNames.find(t => quiz.topicsTested?.includes(t));
+      const topicScore   = topicStats[primaryTopic]?.percentage ?? 50;
+      const recentPass   = attempts.find(a => a.quiz?.toString() === quiz._id.toString() && (a.score || 0) >= 70);
+      if (recentPass) continue;
+      items.push({ type: 'quiz', itemId: quiz._id, itemModel: 'Quiz', explanation: `Practice quiz recommended by ML: your score in "${primaryTopic}" is ${topicScore}%. Retaking will reinforce understanding.`, addressesTopic: primaryTopic || 'general', confidence: 75, priority: 5, reasonFactors: [{ factor: 'ml_practice_needed', value: topicScore, description: `ML model identified "${primaryTopic}" as needing more practice` }] });
+    }
+  }
+
+  if (items.length === 0) {
+    const nextLesson = await Lesson.findOne({ course: { $in: courseIds }, _id: { $nin: [...completedIds] }, isPublished: true }).populate('course', 'title').sort({ order: 1 });
+    if (nextLesson?._id) {
+      items.push({ type: 'lesson', itemId: nextLesson._id, itemModel: 'Lesson', explanation: `Continue your learning journey! ML cluster analysis (cluster ${cluster}) suggests this as your next step.`, addressesTopic: nextLesson.topics?.[0] || 'general', confidence: 80, priority: 5, reasonFactors: [{ factor: 'ml_cluster_next', value: cluster, description: `ML assigned you to cluster ${cluster} — this lesson matches your learning group's path` }] });
+    }
+  }
+
+  items.sort((a, b) => b.priority - a.priority);
+
+  const detectedLevel = overallScore >= 80 && weakTopicsSummary.length === 0 ? 'advanced'
+    : overallScore >= 60 && weakTopicsSummary.length <= 2 ? 'intermediate' : 'beginner';
+
+  await Recommendation.updateMany({ student: studentId, isActive: true }, { $set: { isActive: false } });
+
+  return Recommendation.create({
+    student:         studentId,
+    recommendations: items.slice(0, MAX_RECOMMENDATIONS),
+    analysisSummary: {
+      overallScore, weakTopics: weakTopicsSummary, strongTopics: strongTopicsSummary,
+      detectedLevel, coursesAnalyzed: courseIds, totalQuizzesAnalyzed: attempts.length,
+      mlCluster: cluster,
+      mlWeakTopics: weak_topics.map(id => ({ id, name: getTopicName(id) })),
+      mlRecommendedTopics: recommended_topics.map(id => ({ id, name: getTopicName(id) })),
+      shapExplanation: explanation,
+    },
+    generatedBy: 'ml-v1',
+    validUntil:  new Date(Date.now() + RECOMMENDATION_EXPIRY_DAYS * 24 * 60 * 60 * 1000),
+    isActive:    true,
+  });
+}
+
 const getMyRecommendations = async (req, res, next) => {
   try {
     const recommendation = await getLatestRecommendation(req.user._id);
     if (!recommendation) {
-      return res.status(200).json({
-        success: true, data: null,
-        message: 'No recommendations yet. Complete some quizzes to get personalized suggestions!',
-      });
+      return res.status(200).json({ success: true, data: null, message: 'No recommendations yet. Complete some quizzes to get personalized suggestions!' });
     }
     res.status(200).json({ success: true, data: recommendation });
   } catch (error) { next(error); }
 };
 
-// GET /api/recommendations/analysis — uses QuizAttempt (main model used in this app)
 const getMyAnalysis = async (req, res, next) => {
   try {
-    const attempts = await QuizAttempt.find({ student: req.user._id })
-      .populate('quiz', 'title')
-      .populate('course', 'title')
-      .sort({ createdAt: -1 });
-
+    const attempts = await QuizAttempt.find({ student: req.user._id }).populate('quiz', 'title').populate('course', 'title').sort({ createdAt: -1 });
     if (!attempts.length) {
-      return res.status(200).json({
-        success: true,
-        data: { hasData: false, message: 'Complete quizzes to see your performance analysis' },
-      });
+      return res.status(200).json({ success: true, data: { hasData: false, message: 'Complete quizzes to see your performance analysis' } });
     }
-
-    // Build topic stats from weakTopics/strongTopics arrays
-    const topicMap = {};
-    attempts.forEach(a => {
-      (a.weakTopics || []).forEach(t => {
-        if (!topicMap[t]) topicMap[t] = { correct: 0, total: 0 };
-        topicMap[t].total++;
-      });
-      (a.strongTopics || []).forEach(t => {
-        if (!topicMap[t]) topicMap[t] = { correct: 0, total: 0 };
-        topicMap[t].correct++;
-        topicMap[t].total++;
-      });
-    });
-
-    const topicStats = {};
-    Object.entries(topicMap).forEach(([topic, s]) => {
-      topicStats[topic] = {
-        correct: s.correct, total: s.total,
-        percentage: s.total > 0 ? Math.round((s.correct / s.total) * 100) : 0,
-      };
-    });
-
-    const weakTopics    = [];
-    const strongTopics  = [];
-    const averageTopics = [];
-
+    const topicStats  = aggregateTopicPerformance(attempts);
+    const weakTopics  = [], strongTopics = [], averageTopics = [];
     Object.entries(topicStats).forEach(([topic, stats]) => {
       const entry = { topic, ...stats };
-      if (stats.percentage < 60)      weakTopics.push(entry);
+      if (stats.percentage < 60) weakTopics.push(entry);
       else if (stats.percentage >= 80) strongTopics.push(entry);
-      else                             averageTopics.push(entry);
+      else averageTopics.push(entry);
     });
-
     const scores = attempts.map(a => a.score || 0);
-    const overallScore = scores.length ? Math.round(scores.reduce((a,b)=>a+b,0)/scores.length) : 0;
-
-    const recentHistory = attempts.slice(0, 10).map(a => ({
-      quizTitle:   a.quiz?.title   || 'Quiz',
-      courseTitle: a.course?.title || 'Course',
-      score:       a.score,
-      passed:      a.isPassed,
-      date:        a.createdAt,
-    }));
-
-    const progressData  = await Progress.find({ student: req.user._id });
-    const totalTimeSpent    = progressData.reduce((sum, p) => sum + (p.timeSpent || 0), 0);
-    const completedLessons  = progressData.filter(p => p.isCompleted).length;
-
-    // Enrollment-based progress
-    const enrollments = await Enrollment.find({ student: req.user._id }).populate('course', 'title');
-    const courseProgress = enrollments.map(e => ({
-      courseTitle:         e.course?.title || 'Course',
-      completionPct:       e.completionPercentage || 0,
-    }));
-
-    res.status(200).json({
-      success: true,
-      data: {
-        hasData: true,
-        overallScore,
-        weakTopics:    weakTopics.sort((a,b) => a.percentage - b.percentage),
-        strongTopics:  strongTopics.sort((a,b) => b.percentage - a.percentage),
-        averageTopics,
-        recentHistory,
-        courseProgress,
-        stats: {
-          totalQuizzesTaken:   attempts.length,
-          quizzesPassed:       attempts.filter(a => a.isPassed).length,
-          totalTimeSpentMinutes: totalTimeSpent,
-          completedLessons,
-          averageScore:        overallScore,
-          total:               attempts.length,
-          avgScore:            overallScore,
-        },
-      },
-    });
+    const overallScore = Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
+    const recentHistory = attempts.slice(0, 10).map(a => ({ quizTitle: a.quiz?.title || 'Quiz', courseTitle: a.course?.title || 'Course', score: a.score, passed: a.isPassed, date: a.createdAt }));
+    const progressData     = await Progress.find({ student: req.user._id });
+    const totalTimeSpent   = progressData.reduce((s, p) => s + (p.timeSpent || 0), 0);
+    const completedLessons = progressData.filter(p => p.isCompleted).length;
+    const enrollments      = await Enrollment.find({ student: req.user._id }).populate('course', 'title');
+    const courseProgress   = enrollments.map(e => ({ courseTitle: e.course?.title || 'Course', completionPct: e.completionPercentage || 0 }));
+    const latestRec = await Recommendation.findOne({ student: req.user._id, isActive: true }).sort({ createdAt: -1 });
+    const mlInsights = latestRec?.analysisSummary?.shapExplanation ? { cluster: latestRec.analysisSummary.mlCluster, shapContributions: latestRec.analysisSummary.shapExplanation?.shap_contributions, humanReadable: latestRec.analysisSummary.shapExplanation?.human_readable, engine: latestRec.generatedBy } : null;
+    res.status(200).json({ success: true, data: { hasData: true, overallScore, weakTopics: weakTopics.sort((a,b)=>a.percentage-b.percentage), strongTopics: strongTopics.sort((a,b)=>b.percentage-a.percentage), averageTopics, recentHistory, courseProgress, mlInsights, stats: { totalQuizzesTaken: attempts.length, quizzesPassed: attempts.filter(a=>a.isPassed).length, totalTimeSpentMinutes: totalTimeSpent, completedLessons, averageScore: overallScore, total: attempts.length, avgScore: overallScore } } });
   } catch (error) { next(error); }
 };
 
-// PUT /api/recommendations/:recId/item/:itemId/dismiss
+const triggerTraining = async (req, res, next) => {
+  try {
+    const result = await triggerMLTraining();
+    res.status(result.success ? 200 : 503).json(result);
+  } catch (error) { next(error); }
+};
+
+const getMLStatus = async (req, res, next) => {
+  try {
+    const up = await isMLServiceUp();
+    res.status(200).json({ mlServiceOnline: up, mlServiceUrl: process.env.ML_SERVICE_URL || 'http://localhost:5001' });
+  } catch (error) { next(error); }
+};
+
 const dismissRecommendation = async (req, res, next) => {
   try {
     const rec = await Recommendation.findOne({ _id: req.params.recId, student: req.user._id });
@@ -143,14 +254,11 @@ const dismissRecommendation = async (req, res, next) => {
   } catch (error) { next(error); }
 };
 
-// GET /api/recommendations/admin/all
 const getAllRecommendations = async (req, res, next) => {
   try {
-    const recommendations = await Recommendation.find({ isActive: true })
-      .populate('student', 'name email learningLevel')
-      .sort({ createdAt: -1 }).limit(50);
+    const recommendations = await Recommendation.find({ isActive: true }).populate('student', 'name email learningLevel').sort({ createdAt: -1 }).limit(50);
     res.status(200).json({ success: true, data: recommendations });
   } catch (error) { next(error); }
 };
 
-module.exports = { generateMyRecommendations, getMyRecommendations, getMyAnalysis, dismissRecommendation, getAllRecommendations };
+module.exports = { generateMyRecommendations, getMyRecommendations, getMyAnalysis, dismissRecommendation, getAllRecommendations, triggerTraining, getMLStatus };
