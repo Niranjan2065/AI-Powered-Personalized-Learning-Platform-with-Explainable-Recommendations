@@ -22,6 +22,8 @@ const {
   exportInteractionsCSV,
 } = require('../services/mlBridgeService');
 
+const { sendRecommendationEmail } = require('../services/emailService');
+
 const RECOMMENDATION_EXPIRY_DAYS = 7;
 const MAX_RECOMMENDATIONS        = 8;
 
@@ -69,6 +71,12 @@ const generateMyRecommendations = async (req, res, next) => {
     if (detectedLevel) {
       await User.findByIdAndUpdate(studentId, { learningLevel: detectedLevel });
     }
+
+    // ── Fire-and-forget recommendation email ────────────────
+    sendRecommendationEmail(
+      { name: req.user.name, email: req.user.email },
+      recommendation
+    );
 
     res.status(200).json({
       success: true,

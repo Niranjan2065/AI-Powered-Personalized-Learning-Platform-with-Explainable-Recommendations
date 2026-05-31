@@ -2,8 +2,10 @@
 const fs          = require('fs');
 const Quiz        = require('../models/Quiz');
 const QuizAttempt = require('../models/QuizAttempt');
+const User        = require('../models/User');
 const { generateQuestions }      = require('../services/aiQuizService');
 const { extractTextFromPdfPath } = require('../services/pdfExtractService');
+const { sendQuizResultEmail }    = require('../services/emailService');
 
 // ─────────────────────────────────────────────────────────────
 // FIX: lesson.content is a nested object { text, videoUrl, pdfUrl... }
@@ -349,6 +351,18 @@ exports.submitAttempt = async (req, res) => {
     $inc: { totalAttempts: 1 },
     $set: { averageScore: Math.round(((quiz.averageScore * quiz.totalAttempts) + score) / (quiz.totalAttempts + 1)) },
   });
+
+  // ── Fire-and-forget quiz result email ────────────────────
+  try {
+    const student = await User.findById(req.user._id).select('name email');
+    if (student?.email) {
+      sendQuizResultEmail(
+        { name: student.name, email: student.email },
+        { title: quiz.title },
+        { score, isPassed, pointsEarned, totalPoints, weakTopics, attemptNumber }
+      );
+    }
+  } catch { /* non-critical — never block the response */ }
 
   res.status(201).json({
     success: true,

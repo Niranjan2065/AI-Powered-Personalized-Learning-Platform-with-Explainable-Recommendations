@@ -13,6 +13,20 @@ import { toast } from "react-toastify";
 import Navbar from "../components/common/Navbar";
 import { useAuth } from "../context/AuthContext";
 import axios from "axios";
+import {
+  ResponsiveContainer,
+  RadarChart,
+  PolarGrid,
+  PolarAngleAxis,
+  PolarRadiusAxis,
+  Radar,
+  AreaChart,
+  Area,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip
+} from "recharts";
 
 const api = axios.create({ baseURL: "/api" });
 api.interceptors.request.use((c) => {
@@ -55,6 +69,62 @@ export default function StudentDashboard() {
 
   const completed  = enrollments.filter((e) => e.progress >= 100).length;
   const inProgress = enrollments.filter((e) => e.progress > 0 && e.progress < 100).length;
+
+  const radarData = [];
+  if (quizStats?.hasData) {
+    const capitalize = (str) => {
+      if (!str) return "";
+      return str.split("-").map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+    };
+    if (quizStats.weakTopics) {
+      quizStats.weakTopics.forEach((t) => {
+        radarData.push({ subject: capitalize(t.topic), score: t.percentage });
+      });
+    }
+    if (quizStats.averageTopics) {
+      quizStats.averageTopics.forEach((t) => {
+        radarData.push({ subject: capitalize(t.topic), score: t.percentage });
+      });
+    }
+    if (quizStats.strongTopics) {
+      quizStats.strongTopics.forEach((t) => {
+        radarData.push({ subject: capitalize(t.topic), score: t.percentage });
+      });
+    }
+  }
+
+  const historyData = quizStats?.recentHistory
+    ? [...quizStats.recentHistory].reverse().map((h, i) => ({
+        name: `Quiz ${i + 1}`,
+        title: h.quizTitle,
+        Score: h.score || 0,
+        date: new Date(h.date).toLocaleDateString([], { month: "short", day: "numeric" })
+      }))
+    : [];
+
+  const CustomTooltip = ({ active, payload }) => {
+    if (active && payload && payload.length) {
+      const data = payload[0].payload;
+      return (
+        <div style={{
+          background: "rgba(30, 27, 75, 0.95)",
+          backdropFilter: "blur(8px)",
+          border: "1px solid var(--border)",
+          padding: "0.75rem 1rem",
+          borderRadius: "var(--radius-sm)",
+          color: "#fff",
+          boxShadow: "var(--shadow)"
+        }}>
+          <p style={{ fontWeight: 700, margin: 0, fontSize: "0.85rem", color: "var(--accent)" }}>{data.title}</p>
+          <p style={{ margin: "0.25rem 0 0", fontSize: "0.8rem" }}>
+            Score: <strong style={{ color: "#34D399", fontSize: "0.95rem" }}>{payload[0].value}%</strong>
+          </p>
+          <p style={{ margin: 0, fontSize: "0.7rem", opacity: 0.7 }}>Date: {data.date}</p>
+        </div>
+      );
+    }
+    return null;
+  };
 
   const stats = [
     { icon: "📚", label: "Enrolled",    val: enrollments.length,     color: "var(--primary)" },
@@ -121,10 +191,11 @@ export default function StudentDashboard() {
         </div>
 
         {loading ? <Spinner /> : (
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 300px", gap: "1.5rem", alignItems: "start" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 320px", gap: "1.5rem", alignItems: "start" }}>
 
-            {/* Enrollments */}
+            {/* Left Column: Enrollments & Quiz History */}
             <div>
+              {/* Enrollments */}
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.25rem" }}>
                 <h2 style={{ fontSize: "1.1rem" }}>My Courses</h2>
                 <Link to="/courses" className="btn btn-outline btn-sm">+ Enroll More</Link>
@@ -173,12 +244,82 @@ export default function StudentDashboard() {
                   </div>
                 ))
               )}
+
+              {/* Quiz Score History Chart */}
+              {historyData.length > 0 && (
+                <div className="card" style={{ padding: "1.25rem", marginTop: "1.5rem" }}>
+                  <h3 style={{ fontSize: "0.95rem", fontWeight: 700, marginBottom: "1rem" }}>📈 Quiz Progress & Score History</h3>
+                  <div style={{ width: "100%", height: 240 }}>
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={historyData} margin={{ top: 10, right: 10, left: -25, bottom: 0 }}>
+                        <defs>
+                          <linearGradient id="scoreColor" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="var(--primary)" stopOpacity={0.3}/>
+                            <stop offset="95%" stopColor="var(--primary)" stopOpacity={0}/>
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+                        <XAxis dataKey="name" tick={{ fill: "var(--text-muted)", fontSize: 10 }} />
+                        <YAxis domain={[0, 100]} tick={{ fill: "var(--text-muted)", fontSize: 10 }} />
+                        <Tooltip content={<CustomTooltip />} />
+                        <Area
+                          type="monotone"
+                          dataKey="Score"
+                          stroke="var(--primary)"
+                          strokeWidth={2.5}
+                          fillOpacity={1}
+                          fill="url(#scoreColor)"
+                        />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              )}
             </div>
 
-            {/* Performance Panel */}
+            {/* Right Column: Performance Radar & Highlights */}
             <div>
-              <h2 style={{ fontSize: "1.1rem", marginBottom: "1.25rem" }}>Performance</h2>
+              <h2 style={{ fontSize: "1.1rem", marginBottom: "1.25rem" }}>Performance Analysis</h2>
 
+              {/* Radar Chart for topic performance */}
+              {radarData.length > 0 ? (
+                <div className="card" style={{ padding: "1.25rem", marginBottom: "1rem" }}>
+                  <h3 style={{ fontSize: "0.85rem", color: "var(--text-muted)", fontWeight: 600, marginBottom: "0.75rem" }}>🎯 Topic Mastery</h3>
+                  <div style={{ width: "100%", height: 210 }}>
+                    <ResponsiveContainer width="100%" height="100%">
+                      <RadarChart cx="50%" cy="50%" outerRadius="70%" data={radarData}>
+                        <PolarGrid stroke="var(--border)" />
+                        <PolarAngleAxis dataKey="subject" tick={{ fill: "var(--text)", fontSize: 8, fontWeight: 500 }} />
+                        <PolarRadiusAxis angle={30} domain={[0, 100]} tick={{ fill: "var(--text-muted)", fontSize: 8 }} />
+                        <Radar
+                          name="Mastery"
+                          dataKey="score"
+                          stroke="var(--primary)"
+                          fill="var(--primary)"
+                          fillOpacity={0.25}
+                        />
+                        <Tooltip
+                          contentStyle={{
+                            background: "rgba(30, 27, 75, 0.95)",
+                            backdropFilter: "blur(8px)",
+                            border: "1px solid var(--border)",
+                            borderRadius: "var(--radius-sm)",
+                            color: "#fff",
+                            fontSize: "0.75rem",
+                          }}
+                        />
+                      </RadarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              ) : (
+                <div className="card" style={{ padding: "1.5rem", textAlign: "center", marginBottom: "1rem", color: "var(--text-muted)" }}>
+                  <span style={{ fontSize: "1.5rem" }}>📊</span>
+                  <p style={{ fontSize: "0.78rem", margin: "0.5rem 0 0" }}>Take quizzes to generate topic analytics charts!</p>
+                </div>
+              )}
+
+              {/* Topic Lists */}
               {quizStats?.weakTopics?.length > 0 && (
                 <div className="card" style={{ padding: "1.1rem", borderLeft: "3px solid var(--danger)", marginBottom: "1rem" }}>
                   <h3 style={{ fontSize: ".9rem", color: "var(--danger)", marginBottom: ".75rem" }}>🔴 Needs Work</h3>

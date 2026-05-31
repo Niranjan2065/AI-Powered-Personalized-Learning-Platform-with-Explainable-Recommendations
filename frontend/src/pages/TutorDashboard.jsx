@@ -13,6 +13,19 @@ import { toast } from "react-toastify";
 import Navbar from "../components/common/Navbar";
 import { useAuth } from "../context/AuthContext";
 import axios from "axios";
+import {
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Cell,
+  PieChart,
+  Pie,
+  Legend
+} from "recharts";
 
 const api = axios.create({ baseURL: "/api" });
 api.interceptors.request.use((c) => {
@@ -34,6 +47,7 @@ export default function TutorDashboard() {
   const navigate  = useNavigate();
   const [courses, setCourses] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [showAnalytics, setShowAnalytics] = useState(true);
 
   useEffect(() => {
     api.get("/courses/my")
@@ -53,6 +67,47 @@ export default function TutorDashboard() {
   ];
 
   const levelColor = { beginner: "badge-success", intermediate: "badge-warning", advanced: "badge-danger" };
+
+  const enrollmentData = courses.map((c) => ({
+    name: c.title.length > 15 ? c.title.slice(0, 15) + "..." : c.title,
+    Students: c.enrollmentCount || 0,
+    fullName: c.title
+  }));
+
+  const levelCounts = { beginner: 0, intermediate: 0, advanced: 0 };
+  courses.forEach((c) => {
+    if (levelCounts[c.level] !== undefined) levelCounts[c.level]++;
+    else levelCounts.beginner++;
+  });
+
+  const levelData = [
+    { name: "Beginner", value: levelCounts.beginner, color: "#10B981" },
+    { name: "Intermediate", value: levelCounts.intermediate, color: "#F59E0B" },
+    { name: "Advanced", value: levelCounts.advanced, color: "#EF4444" },
+  ].filter(d => d.value > 0);
+
+  const CustomBarTooltip = ({ active, payload }) => {
+    if (active && payload && payload.length) {
+      const data = payload[0].payload;
+      return (
+        <div style={{
+          background: "rgba(30, 27, 75, 0.95)",
+          backdropFilter: "blur(8px)",
+          border: "1px solid var(--border)",
+          padding: "0.75rem 1rem",
+          borderRadius: "var(--radius-sm)",
+          color: "#fff",
+          boxShadow: "var(--shadow)"
+        }}>
+          <p style={{ fontWeight: 700, margin: 0, fontSize: "0.82rem", color: "var(--accent)" }}>{data.fullName}</p>
+          <p style={{ margin: "0.25rem 0 0", fontSize: "0.78rem" }}>
+            Students Enrolled: <strong style={{ color: "#34D399", fontSize: "0.9rem" }}>{payload[0].value}</strong>
+          </p>
+        </div>
+      );
+    }
+    return null;
+  };
 
   return (
     <div style={{ minHeight: "100vh", background: "var(--bg)" }}>
@@ -75,10 +130,18 @@ export default function TutorDashboard() {
               Welcome back, {user?.name}. Manage your courses and students.
             </p>
           </div>
-          <Link to="/tutor/courses/create" className="btn"
-            style={{ background: "#fff", color: "#7c3aed", fontWeight: 700 }}>
-            + Create New Course
-          </Link>
+          <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
+            {!loading && courses.length > 0 && (
+              <button onClick={() => setShowAnalytics(!showAnalytics)} className="btn btn-outline"
+                style={{ borderColor: "rgba(255,255,255,.3)", color: "#fff", fontWeight: 600 }}>
+                {showAnalytics ? "🙈 Hide Charts" : "📊 Show Charts"}
+              </button>
+            )}
+            <Link to="/tutor/courses/create" className="btn"
+              style={{ background: "#fff", color: "#7c3aed", fontWeight: 700 }}>
+              + Create New Course
+            </Link>
+          </div>
         </div>
 
         {/* Stats */}
@@ -103,6 +166,72 @@ export default function TutorDashboard() {
             </div>
           ))}
         </div>
+
+        {/* Analytics Panel */}
+        {!loading && courses.length > 0 && showAnalytics && (
+          <div style={{ display: "grid", gridTemplateColumns: "1.7fr 1fr", gap: "1.5rem", marginBottom: "2rem" }}>
+            {/* Enrollment Bar Chart */}
+            <div className="card" style={{ padding: "1.25rem" }}>
+              <h3 style={{ fontSize: "0.9rem", fontWeight: 700, marginBottom: "1rem" }}>👥 Course Enrollment Analytics</h3>
+              <div style={{ width: "100%", height: 230 }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={enrollmentData} margin={{ top: 10, right: 10, left: -25, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+                    <XAxis dataKey="name" tick={{ fill: "var(--text-muted)", fontSize: 10 }} />
+                    <YAxis tick={{ fill: "var(--text-muted)", fontSize: 10 }} />
+                    <Tooltip content={<CustomBarTooltip />} />
+                    <Bar dataKey="Students" fill="var(--primary)" radius={[4, 4, 0, 0]}>
+                      {enrollmentData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={index % 2 === 0 ? "var(--primary)" : "#8B5CF6"} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+
+            {/* Level Distribution Pie Chart */}
+            <div className="card" style={{ padding: "1.25rem", display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
+              <h3 style={{ fontSize: "0.9rem", fontWeight: 700, marginBottom: "0.5rem" }}>📊 Course Difficulty Spread</h3>
+              <div style={{ width: "100%", height: 160 }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={levelData}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={45}
+                      outerRadius={65}
+                      paddingAngle={3}
+                      dataKey="value"
+                    >
+                      {levelData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.color} />
+                      ))}
+                    </Pie>
+                    <Tooltip
+                      contentStyle={{
+                        background: "rgba(30, 27, 75, 0.95)",
+                        border: "1px solid var(--border)",
+                        borderRadius: "var(--radius-sm)",
+                        color: "#fff",
+                        fontSize: "0.75rem"
+                      }}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-around", fontSize: "0.75rem", fontWeight: 600 }}>
+                {levelData.map((entry) => (
+                  <div key={entry.name} style={{ display: "flex", alignItems: "center", gap: "0.3rem" }}>
+                    <div style={{ width: 8, height: 8, borderRadius: "50%", background: entry.color }} />
+                    <span style={{ color: "var(--text-muted)" }}>{entry.name} ({entry.value})</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Courses Table */}
         <div className="card" style={{ overflow: "hidden" }}>

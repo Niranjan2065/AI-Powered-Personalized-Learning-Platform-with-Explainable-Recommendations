@@ -10,9 +10,14 @@ Endpoints:
   GET  /api/recommendations/<student_id>    — recommend + SHAP
   GET  /api/recommendations/<student_id>/lime — LIME explanation only
 
-Run:
-  cd ml_service
-  python app.py          # port 5001
+Run from the project ROOT (not from inside backend/ml_service):
+  python backend/ml_service/app.py
+
+OR set PYTHONPATH manually:
+  cd backend/ml_service
+  set PYTHONPATH=../../       (Windows)
+  export PYTHONPATH=../../    (Mac/Linux)
+  python app.py
 ─────────────────────────────────────────────────────────────────────────────
 """
 
@@ -20,9 +25,27 @@ import sys
 import os
 
 # ── Path setup ────────────────────────────────────────────────────────────────
-# Allow imports from the ai_engine package
-PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, PROJECT_ROOT)
+# File is at:  <project_root>/backend/ml_service/app.py
+# ai_engine is at: <project_root>/ai_engine/
+#
+# So we need to go UP three levels from this file:
+#   __file__                     → .../backend/ml_service/app.py
+#   dirname(__file__)            → .../backend/ml_service
+#   dirname(dirname(__file__))   → .../backend
+#   dirname(dirname(dirname(__file__))) → <project_root>  ✅
+
+THIS_FILE    = os.path.abspath(__file__)
+ML_DIR       = os.path.dirname(THIS_FILE)          # backend/ml_service
+BACKEND_DIR  = os.path.dirname(ML_DIR)             # backend
+PROJECT_ROOT = os.path.dirname(BACKEND_DIR)         # project root  ← ai_engine lives here
+
+# Insert project root so Python can find ai_engine package
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
+
+print(f"[ML Service] PROJECT_ROOT = {PROJECT_ROOT}")
+print(f"[ML Service] ai_engine path = {os.path.join(PROJECT_ROOT, 'ai_engine')}")
+print(f"[ML Service] ai_engine exists = {os.path.isdir(os.path.join(PROJECT_ROOT, 'ai_engine'))}")
 
 from flask import Flask, jsonify, request
 from flask_cors import CORS
@@ -30,7 +53,7 @@ from flask_cors import CORS
 app = Flask(__name__)
 CORS(app)
 
-# ── Lazy-import ML modules (so startup is fast even if deps are missing) ──────
+# ── Lazy-import ML modules ────────────────────────────────────────────────────
 
 def _import_engine():
     from ai_engine.src.recommend       import get_recommendations
@@ -53,28 +76,25 @@ def _import_pipeline():
 
 @app.route('/api/health', methods=['GET'])
 def health():
-    return jsonify({'status': 'ok', 'service': 'ml-microservice'}), 200
+    return jsonify({
+        'status':       'ok',
+        'service':      'ml-microservice',
+        'project_root': PROJECT_ROOT,
+        'ai_engine_found': os.path.isdir(os.path.join(PROJECT_ROOT, 'ai_engine')),
+    }), 200
 
 
-# ── Training ─────────────────────────────────────────────────────────────────
+# ── Training ──────────────────────────────────────────────────────────────────
 
 @app.route('/ml/train', methods=['POST'])
 def train():
-    """
-    (Re)train KMeans + collaborative filter from the latest interactions.csv.
-    Called by Node.js mlBridgeService.triggerMLTraining().
-    """
     try:
         preprocess, train_and_save = _import_pipeline()
-
         print('[ML Service] Running preprocessing...')
         preprocess()
-
         print('[ML Service] Training models...')
         train_and_save()
-
         return jsonify({'success': True, 'message': 'Models trained successfully.'}), 200
-
     except FileNotFoundError as e:
         return jsonify({'error': f'Data file missing: {str(e)}'}), 422
     except Exception as e:
@@ -87,22 +107,7 @@ def train():
 
 @app.route('/api/recommendations/<int:student_id>', methods=['GET'])
 def recommendations(student_id):
-    """
-    GET /api/recommendations/<numeric_student_id>?top_n=5
-
-    Returns:
-      {
-        student_id, cluster,
-        recommended_topics, weak_topics,
-        student_features,
-        explanation: {
-          human_readable, weak_topic_note,
-          shap_contributions
-        }
-      }
-    """
     top_n = request.args.get('top_n', 5, type=int)
-
     try:
         get_recommendations, explain_with_shap, _, \
             generate_recommendation_reason, generate_weak_topic_reason = _import_engine()
@@ -111,8 +116,7 @@ def recommendations(student_id):
         if 'error' in rec:
             return jsonify(rec), 404
 
-        shap_exp = explain_with_shap(student_id=student_id)
-
+        shap_exp    = explain_with_shap(student_id=student_id)
         reason      = generate_recommendation_reason(shap_exp, rec['recommended_topics'])
         weak_reason = generate_weak_topic_reason(rec['weak_topics'])
 
@@ -130,9 +134,7 @@ def recommendations(student_id):
         }), 200
 
     except FileNotFoundError:
-        return jsonify({
-            'error': 'Models not trained yet. POST /ml/train first.'
-        }), 503
+        return jsonify({'error': 'Models not trained yet. POST /ml/train first.'}), 503
     except Exception as e:
         import traceback
         traceback.print_exc()
@@ -141,10 +143,6 @@ def recommendations(student_id):
 
 @app.route('/api/recommendations/<int:student_id>/lime', methods=['GET'])
 def lime_explanation(student_id):
-    """
-    GET /api/recommendations/<numeric_student_id>/lime
-    Returns LIME explanation for the student's cluster assignment.
-    """
     try:
         _, _, explain_with_lime, _, _ = _import_engine()
         result = explain_with_lime(student_id=student_id)

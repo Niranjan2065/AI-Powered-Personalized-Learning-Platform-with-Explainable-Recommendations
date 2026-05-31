@@ -3,9 +3,10 @@
 // ============================================================
 
 const Enrollment = require('../models/Enrollment');
-const Course = require('../models/Course');
-const User = require('../models/User');
-const Lesson = require('../models/Lesson');
+const Course     = require('../models/Course');
+const User       = require('../models/User');
+const Lesson     = require('../models/Lesson');
+const { sendEnrollmentEmail } = require('../services/emailService');
 
 // @desc  Enroll student in a course
 // @route POST /api/enrollments/:courseId
@@ -35,6 +36,12 @@ const enrollCourse = async (req, res, next) => {
       Course.findByIdAndUpdate(course._id, { $inc: { enrollmentCount: 1 } }),
       User.findByIdAndUpdate(req.user._id, { $addToSet: { enrolledCourses: course._id } }),
     ]);
+
+    // ── Fire-and-forget enrollment email ────────────────────
+    sendEnrollmentEmail(
+      { name: req.user.name, email: req.user.email },
+      course
+    );
 
     res.status(201).json({
       success: true,

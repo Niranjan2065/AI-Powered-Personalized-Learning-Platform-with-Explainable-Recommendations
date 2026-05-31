@@ -12,6 +12,19 @@ import { Link } from "react-router-dom";
 import { toast } from "react-toastify";
 import Navbar from "../components/common/Navbar";
 import axios from "axios";
+import {
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Cell,
+  PieChart,
+  Pie,
+  Legend
+} from "recharts";
 
 const api = axios.create({ baseURL: "/api" });
 api.interceptors.request.use((c) => {
@@ -64,6 +77,27 @@ export default function AdminDashboard() {
   const tutors   = users.filter((u) => u.role === "tutor" || u.role === "teacher");
   const published = courses.filter((c) => c.isPublished).length;
   const totalEnrolled = courses.reduce((s, c) => s + (c.enrollmentCount || 0), 0);
+
+  const userRoleData = [
+    { name: "Students", value: students.length, color: "var(--primary)" },
+    { name: "Tutors", value: tutors.length, color: "#8B5CF6" },
+    { name: "Admins", value: users.filter((u) => u.role === "admin").length, color: "var(--accent)" }
+  ].filter(d => d.value > 0);
+
+  const healthData = [
+    { name: "Course Publish Rate", Percentage: courses.length > 0 ? Math.round((published / courses.length) * 100) : 0 },
+    { name: "Active Users Rate", Percentage: users.length > 0 ? Math.round((users.filter(u => u.isActive).length / users.length) * 100) : 0 },
+    { name: "Quiz Pass Rate", Percentage: stats?.quizPassRate || 74 }
+  ];
+
+  const popularCoursesData = [...courses]
+    .sort((a, b) => (b.enrollmentCount || 0) - (a.enrollmentCount || 0))
+    .slice(0, 5)
+    .map(c => ({
+      name: c.title.length > 15 ? c.title.slice(0, 15) + "..." : c.title,
+      Students: c.enrollmentCount || 0,
+      fullName: c.title
+    }));
 
   const statCards = [
     { icon: "👥", label: "Students",    val: students.length,  color: "var(--primary)" },
@@ -144,52 +178,105 @@ export default function AdminDashboard() {
           <>
             {/* ── Overview ── */}
             {tab === "overview" && (
-              <div className="grid-2">
-                <div className="card" style={{ padding: "1.25rem" }}>
-                  <h3 style={{ fontSize: ".95rem", marginBottom: "1rem" }}>📈 Platform Health</h3>
-                  {[
-                    ["Course Publish Rate", published, courses.length, "var(--secondary)"],
-                    ["Active Users", users.filter((u) => u.isActive).length, users.length, "var(--primary)"],
-                    ["Quiz Completion Rate", stats?.quizPassRate || 74, 100, "var(--accent)"],
-                  ].map(([label, val, max, color]) => {
-                    const pct = max > 0 ? Math.round((val / max) * 100) : 0;
-                    return (
-                      <div key={label} style={{ marginBottom: "1rem" }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", fontSize: ".82rem", marginBottom: ".3rem" }}>
-                          <span>{label}</span>
-                          <span style={{ fontWeight: 700, color }}>{pct}%</span>
-                        </div>
-                        <div style={{ background: "var(--border)", borderRadius: 99, height: 7, overflow: "hidden" }}>
-                          <div style={{ width: `${pct}%`, height: "100%", background: color, borderRadius: 99 }} />
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-                <div className="card" style={{ padding: "1.25rem" }}>
-                  <h3 style={{ fontSize: ".95rem", marginBottom: "1rem" }}>🆕 Recent Users</h3>
-                  {users.slice(0, 6).map((u) => (
-                    <div key={u._id} style={{ display: "flex", alignItems: "center", gap: ".6rem", marginBottom: ".7rem" }}>
-                      <div style={{
-                        width: 34, height: 34, borderRadius: "50%",
-                        background: u.role === "admin" ? "#FEF3C7" : u.role === "tutor" || u.role === "teacher" ? "var(--secondary-light)" : "var(--primary-light)",
-                        display: "flex", alignItems: "center", justifyContent: "center",
-                        fontWeight: 700, fontSize: ".82rem",
-                        color: u.role === "admin" ? "#92400E" : u.role === "tutor" || u.role === "teacher" ? "#065F46" : "var(--primary-dark)",
-                      }}>
-                        {u.name?.charAt(0).toUpperCase()}
-                      </div>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontWeight: 600, fontSize: ".82rem" }}>{u.name}</div>
-                        <div style={{ fontSize: ".7rem", color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.email}</div>
-                      </div>
-                      <span className={`badge ${u.role === "admin" ? "badge-warning" : u.role === "tutor" || u.role === "teacher" ? "badge-success" : "badge-primary"}`}>
-                        {u.role}
-                      </span>
+              <>
+                <div className="grid-2" style={{ marginBottom: "1.5rem" }}>
+                  {/* Platform Health Chart */}
+                  <div className="card" style={{ padding: "1.25rem" }}>
+                    <h3 style={{ fontSize: ".95rem", marginBottom: "1.25rem" }}>📈 Platform Health Indices</h3>
+                    <div style={{ width: "100%", height: 180 }}>
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={healthData} layout="vertical" margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" horizontal={false} />
+                          <XAxis type="number" domain={[0, 100]} tick={{ fill: "var(--text-muted)", fontSize: 10 }} />
+                          <YAxis dataKey="name" type="category" width={110} tick={{ fill: "var(--text)", fontSize: 9 }} />
+                          <Tooltip
+                            contentStyle={{
+                              background: "rgba(30, 27, 75, 0.95)",
+                              border: "1px solid var(--border)",
+                              borderRadius: "var(--radius-sm)",
+                              color: "#fff",
+                              fontSize: "0.75rem"
+                            }}
+                          />
+                          <Bar dataKey="Percentage" fill="var(--primary)" radius={[0, 4, 4, 0]} barSize={16}>
+                            {healthData.map((entry, index) => {
+                              const colors = ["var(--secondary)", "var(--primary)", "var(--accent)"];
+                              return <Cell key={`cell-${index}`} fill={colors[index % colors.length]} />;
+                            })}
+                          </Bar>
+                        </BarChart>
+                      </ResponsiveContainer>
                     </div>
-                  ))}
+                  </div>
+
+                  {/* User Roles Pie Chart */}
+                  <div className="card" style={{ padding: "1.25rem", display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
+                    <h3 style={{ fontSize: ".95rem", marginBottom: "0.5rem" }}>👥 User Base Distribution</h3>
+                    <div style={{ width: "100%", height: 140 }}>
+                      <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
+                          <Pie
+                            data={userRoleData}
+                            cx="50%"
+                            cy="50%"
+                            innerRadius={35}
+                            outerRadius={55}
+                            paddingAngle={3}
+                            dataKey="value"
+                          >
+                            {userRoleData.map((entry, index) => (
+                              <Cell key={`cell-${index}`} fill={entry.color} />
+                            ))}
+                          </Pie>
+                          <Tooltip
+                            contentStyle={{
+                              background: "rgba(30, 27, 75, 0.95)",
+                              border: "1px solid var(--border)",
+                              borderRadius: "var(--radius-sm)",
+                              color: "#fff",
+                              fontSize: "0.75rem"
+                            }}
+                          />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-around", fontSize: "0.72rem", fontWeight: 600 }}>
+                      {userRoleData.map((entry) => (
+                        <div key={entry.name} style={{ display: "flex", alignItems: "center", gap: "0.3rem" }}>
+                          <div style={{ width: 8, height: 8, borderRadius: "50%", background: entry.color }} />
+                          <span style={{ color: "var(--text-muted)" }}>{entry.name} ({entry.value})</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 </div>
-              </div>
+
+                <div className="card" style={{ padding: "1.25rem" }}>
+                  <h3 style={{ fontSize: ".95rem", marginBottom: "1.25rem" }}>🆕 Recent Platform Users</h3>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: "1rem" }}>
+                    {users.slice(0, 6).map((u) => (
+                      <div key={u._id} style={{ display: "flex", alignItems: "center", gap: ".6rem", padding: "0.5rem", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)" }}>
+                        <div style={{
+                          width: 34, height: 34, borderRadius: "50%",
+                          background: u.role === "admin" ? "#FEF3C7" : u.role === "tutor" || u.role === "teacher" ? "var(--secondary-light)" : "var(--primary-light)",
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                          fontWeight: 700, fontSize: ".82rem",
+                          color: u.role === "admin" ? "#92400E" : u.role === "tutor" || u.role === "teacher" ? "#065F46" : "var(--primary-dark)",
+                        }}>
+                          {u.name?.charAt(0).toUpperCase()}
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontWeight: 600, fontSize: ".82rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.name}</div>
+                          <div style={{ fontSize: ".7rem", color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.email}</div>
+                        </div>
+                        <span className={`badge ${u.role === "admin" ? "badge-warning" : u.role === "tutor" || u.role === "teacher" ? "badge-success" : "badge-primary"}`} style={{ fontSize: "0.6rem" }}>
+                          {u.role}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </>
             )}
 
             {/* ── Users ── */}
@@ -300,32 +387,51 @@ export default function AdminDashboard() {
             {tab === "performance" && (
               <div className="grid-2">
                 <div className="card" style={{ padding: "1.25rem" }}>
-                  <h3 style={{ fontSize: ".95rem", marginBottom: "1rem" }}>🏆 Top Students</h3>
+                  <h3 style={{ fontSize: ".95rem", marginBottom: "1rem" }}>🏆 Top Academic Performers</h3>
                   {students.slice(0, 5).map((s, i) => (
                     <div key={s._id} style={{ display: "flex", alignItems: "center", gap: ".6rem", marginBottom: ".7rem" }}>
                       <span style={{ fontSize: "1.1rem" }}>{["🥇","🥈","🥉","4️⃣","5️⃣"][i]}</span>
                       <div style={{ flex: 1 }}>
                         <div style={{ fontWeight: 600, fontSize: ".85rem" }}>{s.name}</div>
-                        <div style={{ fontSize: ".7rem", color: "var(--text-muted)", textTransform: "capitalize" }}>{s.learningLevel}</div>
+                        <div style={{ fontSize: ".7rem", color: "var(--text-muted)", textTransform: "capitalize" }}>{s.learningLevel} Level</div>
                       </div>
-                      <Link to={`/students/${s._id}`} className="btn btn-outline btn-sm">View</Link>
+                      <Link to={`/students/${s._id}`} className="btn btn-outline btn-sm">View Path</Link>
                     </div>
                   ))}
                 </div>
+
                 <div className="card" style={{ padding: "1.25rem" }}>
-                  <h3 style={{ fontSize: ".95rem", marginBottom: "1rem" }}>📚 Most Popular Courses</h3>
-                  {[...courses].sort((a, b) => (b.enrollmentCount || 0) - (a.enrollmentCount || 0)).slice(0, 5).map((c) => (
-                    <div key={c._id} style={{ display: "flex", alignItems: "center", gap: ".6rem", marginBottom: ".7rem" }}>
-                      <span style={{ fontSize: "1.1rem" }}>📚</span>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontWeight: 600, fontSize: ".82rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.title}</div>
-                        <div style={{ fontSize: ".7rem", color: "var(--text-muted)" }}>{c.enrollmentCount || 0} students</div>
-                      </div>
-                      <span style={{ fontWeight: 800, color: "var(--primary)", fontSize: ".85rem" }}>
-                        👥 {c.enrollmentCount || 0}
-                      </span>
+                  <h3 style={{ fontSize: ".95rem", marginBottom: "1.25rem" }}>📈 Course Popularity Breakdown</h3>
+                  {popularCoursesData.length > 0 ? (
+                    <div style={{ width: "100%", height: 200 }}>
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={popularCoursesData} margin={{ top: 5, right: 5, left: -25, bottom: 5 }}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+                          <XAxis dataKey="name" tick={{ fill: "var(--text-muted)", fontSize: 8 }} />
+                          <YAxis tick={{ fill: "var(--text-muted)", fontSize: 9 }} />
+                          <Tooltip
+                            contentStyle={{
+                              background: "rgba(30, 27, 75, 0.95)",
+                              border: "1px solid var(--border)",
+                              borderRadius: "var(--radius-sm)",
+                              color: "#fff",
+                              fontSize: "0.75rem"
+                            }}
+                          />
+                          <Bar dataKey="Students" fill="var(--primary)" radius={[4, 4, 0, 0]}>
+                            {popularCoursesData.map((entry, index) => (
+                              <Cell key={`cell-${index}`} fill={index % 2 === 0 ? "var(--primary)" : "#8B5CF6"} />
+                            ))}
+                          </Bar>
+                        </BarChart>
+                      </ResponsiveContainer>
                     </div>
-                  ))}
+                  ) : (
+                    <div style={{ padding: "3rem", textAlign: "center", color: "var(--text-muted)" }}>
+                      <span style={{ fontSize: "2rem" }}>📭</span>
+                      <p>No enrollment statistics recorded yet.</p>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
