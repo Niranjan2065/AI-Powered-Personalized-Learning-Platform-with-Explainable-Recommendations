@@ -36,36 +36,137 @@ const XAIBar = ({ label, pct, color='var(--primary)' }) => (
 );
 
 // SHAP horizontal bar chart
-const ShapChart = ({ contributions }) => {
+// ── Feature 05: Student-friendly SHAP Visual Chart ───────────────────────────
+// Maps raw SHAP feature names to plain English labels students understand.
+const FEATURE_LABELS = {
+  avg_quiz_score:       'Average Quiz Score',
+  error_count:          'Error Rate',
+  attempts:             'Number of Attempts',
+  time_spent_minutes:   'Time Spent Studying',
+  quiz_score:           'Latest Quiz Score',
+  completion_rate:      'Course Completion',
+  streak_days:          'Study Streak',
+};
+
+const FEATURE_TIPS = {
+  avg_quiz_score:     { pos: 'Your strong quiz scores boosted this recommendation.', neg: 'Low quiz scores triggered this — this lesson targets your weak areas.' },
+  error_count:        { pos: 'Low error rate — great accuracy so far!',               neg: 'High error count detected — this lesson will help fix common mistakes.' },
+  attempts:           { pos: 'Multiple attempts show commitment — keep going.',       neg: 'You needed several tries — this lesson reinforces the concept.' },
+  time_spent_minutes: { pos: 'Good study time investment detected.',                  neg: 'Spending more time here will improve retention.' },
+  quiz_score:         { pos: 'Recent quiz score supports this topic.',                neg: 'Recent quiz score flagged this topic for review.' },
+  completion_rate:    { pos: 'High completion rate — great progress!',               neg: 'Low completion detected — focus on finishing lessons.' },
+  streak_days:        { pos: 'Consistent study streak — excellent habit!',           neg: 'Study more consistently to reinforce learning.' },
+};
+
+const ShapChart = ({ contributions, topic }) => {
   if (!contributions || !Object.keys(contributions).length) return null;
-  const data = Object.entries(contributions)
-    .map(([name, value]) => ({ name, value: parseFloat(value), abs: Math.abs(parseFloat(value)) }))
+
+  // Normalise to 0–100% scale for student-friendly display
+  const entries = Object.entries(contributions)
+    .map(([key, value]) => ({
+      key,
+      label:    FEATURE_LABELS[key] || key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
+      rawValue: parseFloat(value),
+      abs:      Math.abs(parseFloat(value)),
+    }))
     .sort((a, b) => b.abs - a.abs)
     .slice(0, 6);
 
+  const maxAbs = Math.max(...entries.map(e => e.abs), 0.001);
+
+  // Top positive and negative factors for the "Why this matters" summary
+  const topNeg = entries.filter(e => e.rawValue < 0)[0];
+  const topPos = entries.filter(e => e.rawValue > 0)[0];
+
   return (
-    <div style={{ marginTop:'1rem', background:'var(--bg)', borderRadius:10, padding:'1rem', border:'1px solid var(--border)' }}>
-      <div style={{ fontSize:'.72rem', fontWeight:700, color:'var(--text-muted)', marginBottom:'.6rem', textTransform:'uppercase', letterSpacing:'.05em' }}>
-        🧠 SHAP Feature Contributions
+    <div style={{ marginTop:'1.25rem', background:'var(--bg)', borderRadius:12,
+                  padding:'1.25rem', border:'1px solid var(--border)' }}>
+
+      {/* Header */}
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between',
+                    marginBottom:'1rem', flexWrap:'wrap', gap:'.5rem' }}>
+        <div>
+          <div style={{ fontSize:'.78rem', fontWeight:700, color:'#1D4ED8', marginBottom:'.15rem' }}>
+            🧠 Why AI recommended this{topic ? ` for "${topic}"` : ''}
+          </div>
+          <div style={{ fontSize:'.68rem', color:'var(--text-muted)' }}>
+            SHAP explainability — each bar shows how much each factor influenced this recommendation
+          </div>
+        </div>
       </div>
-      <ResponsiveContainer width="100%" height={Math.max(120, data.length * 28)}>
-        <BarChart data={data} layout="vertical" margin={{ top:0, right:16, left:4, bottom:0 }}>
-          <XAxis type="number" tick={{ fontSize:10 }} tickLine={false} axisLine={false} />
-          <YAxis type="category" dataKey="name" width={150} tick={{ fontSize:10 }} tickLine={false} axisLine={false} />
-          <Tooltip
-            formatter={v => [v.toFixed(4), 'SHAP value']}
-            contentStyle={{ fontSize:11, borderRadius:8, border:'1px solid var(--border)' }}
-          />
-          <Bar dataKey="value" radius={[0,4,4,0]}>
-            {data.map((entry, i) => (
-              <Cell key={i} fill={entry.value >= 0 ? '#1d9e75' : '#d85a30'} opacity={0.8} />
-            ))}
-          </Bar>
-        </BarChart>
-      </ResponsiveContainer>
-      <div style={{ display:'flex', gap:'1rem', marginTop:'.5rem', fontSize:'.68rem', color:'var(--text-muted)' }}>
-        <span>🟢 Green = pushed recommendation</span>
-        <span>🟠 Orange = worked against it</span>
+
+      {/* Bars */}
+      <div style={{ display:'flex', flexDirection:'column', gap:'.6rem' }}>
+        {entries.map((e) => {
+          const pct     = (e.abs / maxAbs) * 100;
+          const isPos   = e.rawValue >= 0;
+          const barColor = isPos ? '#059669' : '#DC2626';
+          const bgColor  = isPos ? '#D1FAE5' : '#FEE2E2';
+          const tip      = (FEATURE_TIPS[e.key] || {})[isPos ? 'pos' : 'neg'];
+
+          return (
+            <div key={e.key} title={tip || ''}>
+              {/* Label row */}
+              <div style={{ display:'flex', justifyContent:'space-between',
+                            alignItems:'center', marginBottom:'.25rem' }}>
+                <span style={{ fontSize:'.78rem', fontWeight:500,
+                               color:'var(--text-secondary)', textTransform:'capitalize' }}>
+                  {isPos ? '↑' : '↓'} {e.label}
+                </span>
+                <span style={{ fontSize:'.72rem', fontWeight:600, color: barColor }}>
+                  {isPos ? '+' : '−'}{(e.abs * 100).toFixed(1)}
+                </span>
+              </div>
+              {/* Bar track */}
+              <div style={{ background:'var(--border)', borderRadius:99, height:10, overflow:'hidden' }}>
+                <div style={{
+                  width:`${pct}%`, height:'100%', background: barColor,
+                  borderRadius:99, transition:'width .7s cubic-bezier(.4,0,.2,1)',
+                  position:'relative',
+                }}>
+                  <div style={{
+                    position:'absolute', inset:0, background: bgColor,
+                    opacity:0.35, borderRadius:99,
+                  }} />
+                </div>
+              </div>
+              {/* Tip line */}
+              {tip && (
+                <div style={{ fontSize:'.67rem', color: isPos ? '#065F46' : '#991B1B',
+                              marginTop:'.2rem', lineHeight:1.4 }}>
+                  {tip}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Summary callout */}
+      {(topNeg || topPos) && (
+        <div style={{ marginTop:'1rem', padding:'.75rem 1rem',
+                      background:'#EFF6FF', borderRadius:8,
+                      border:'1px solid #BFDBFE', fontSize:'.78rem',
+                      color:'#1E40AF', lineHeight:1.6 }}>
+          <strong>📌 Key insight: </strong>
+          {topNeg
+            ? `Your ${topNeg.label.toLowerCase()} is the main reason the AI flagged this topic for improvement.`
+            : `Your ${topPos?.label.toLowerCase()} is your biggest strength contributing to this recommendation.`}
+          {topNeg && topPos && ` Meanwhile, your ${topPos.label.toLowerCase()} is a strong point to build on.`}
+        </div>
+      )}
+
+      {/* Legend */}
+      <div style={{ display:'flex', gap:'1.25rem', marginTop:'.75rem',
+                    fontSize:'.67rem', color:'var(--text-muted)' }}>
+        <span style={{ display:'flex', alignItems:'center', gap:'.3rem' }}>
+          <span style={{ width:10, height:10, borderRadius:2, background:'#059669', display:'inline-block' }}/>
+          Positive factor (strength)
+        </span>
+        <span style={{ display:'flex', alignItems:'center', gap:'.3rem' }}>
+          <span style={{ width:10, height:10, borderRadius:2, background:'#DC2626', display:'inline-block' }}/>
+          Negative factor (needs work)
+        </span>
       </div>
     </div>
   );
@@ -152,6 +253,55 @@ export default function RecommendationsPage() {
 
   useEffect(() => { loadData(); }, [loadData]);
 
+  // ── Feature 04: Real-time auto-refresh ───────────────────────────────────────
+  // Poll every 15s so if the backend silently regenerated recommendations after
+  // a quiz attempt, the page picks up the new data without any user action.
+  useEffect(() => {
+    const interval = setInterval(async () => {
+      try {
+        const [recRes, anRes] = await Promise.allSettled([
+          api.get('/recommendations/my'),
+          api.get('/recommendations/analysis'),
+        ]);
+        if (recRes.status === 'fulfilled') {
+          const raw = recRes.value.data?.data;
+          if (!raw) return;
+          let recsArr = [];
+          if (Array.isArray(raw))                       recsArr = raw;
+          else if (Array.isArray(raw?.recommendations)) recsArr = raw.recommendations;
+          else if (Array.isArray(raw?.items))           recsArr = raw.items;
+          setRecs(prev => {
+            // Only update (and show toast) if rec count or latest ID changed
+            const prevId  = prev?.[0]?._id;
+            const newId   = recsArr?.[0]?._id;
+            if (newId && newId !== prevId) {
+              toast.info('🤖 Your learning path was just updated!', { autoClose: 3500 });
+              return recsArr;
+            }
+            return prev;
+          });
+          if (raw?.generatedBy) setEngine(raw.generatedBy);
+          if (raw?.analysisSummary?.shapExplanation) {
+            setMlInsights({
+              cluster:           raw.analysisSummary.mlCluster,
+              shapContributions: raw.analysisSummary.shapExplanation?.shap_contributions,
+              humanReadable:     raw.analysisSummary.shapExplanation?.human_readable,
+              weakTopicNote:     raw.analysisSummary.shapExplanation?.weak_topic_note,
+            });
+          }
+        }
+        if (anRes.status === 'fulfilled') {
+          const d = anRes.value.data;
+          if (d.data?.hasData) {
+            setAnalysis(d.data);
+            if (d.data.mlInsights) setMlInsights(d.data.mlInsights);
+          }
+        }
+      } catch { /* silent — don't disrupt the UI */ }
+    }, 15000); // poll every 15 seconds
+    return () => clearInterval(interval);
+  }, []);
+
   const handleGenerate = async () => {
     setGenerating(true);
     try {
@@ -237,38 +387,169 @@ export default function RecommendationsPage() {
               <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'1.5rem', marginBottom:'2rem' }}>
 
                 {/* Performance Overview */}
+                {/* ── Improved Performance Overview ───────────────────────── */}
                 <div className="card" style={{ padding:'1.5rem' }}>
-                  <h3 style={{ fontSize:'1rem', marginBottom:'1rem' }}>📈 Performance Overview</h3>
-                  <div style={{ display:'flex', gap:'1.5rem', flexWrap:'wrap', marginBottom:'1.25rem' }}>
+                  <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'1.25rem' }}>
+                    <h3 style={{ fontSize:'1rem', margin:0 }}>📈 Performance Overview</h3>
+                    {mlInsights?.cluster !== undefined && (
+                      <span style={{ fontSize:'.68rem', padding:'.2rem .65rem', borderRadius:99,
+                                     background:'#EDE9FE', color:'#5B21B6', fontWeight:600, border:'1px solid #C4B5FD' }}>
+                        🔬 ML Cluster {mlInsights.cluster}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* ── Stat grid: 6 real metrics ── */}
+                  <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:'.75rem', marginBottom:'1.25rem' }}>
                     {[
-                      { label:'Overall Score', val:`${analysis.overallScore}%`, color: analysis.overallScore >= 80 ? 'var(--secondary)' : analysis.overallScore >= 60 ? 'var(--accent)' : 'var(--danger)' },
-                      { label:'Quizzes Taken', val: analysis.stats?.totalQuizzesTaken || 0, color:'var(--primary)' },
-                      { label:'Passed',        val: analysis.stats?.quizzesPassed || 0,    color:'var(--secondary)' },
+                      {
+                        icon: '🎯',
+                        label: 'Overall Score',
+                        val: `${analysis.overallScore}%`,
+                        color: analysis.overallScore >= 80 ? '#059669' : analysis.overallScore >= 60 ? '#D97706' : '#DC2626',
+                        sub: analysis.overallScore >= 80 ? 'Excellent' : analysis.overallScore >= 60 ? 'On track' : 'Needs work',
+                      },
+                      {
+                        icon: '📝',
+                        label: 'Quizzes Taken',
+                        val: analysis.stats?.totalQuizzesTaken || 0,
+                        color: '#1D4ED8',
+                        sub: `${analysis.stats?.quizzesPassed || 0} passed`,
+                      },
+                      {
+                        icon: '✅',
+                        label: 'Pass Rate',
+                        val: analysis.stats?.totalQuizzesTaken
+                          ? `${Math.round((analysis.stats.quizzesPassed / analysis.stats.totalQuizzesTaken) * 100)}%`
+                          : '—',
+                        color: '#059669',
+                        sub: 'Quiz pass rate',
+                      },
+                      {
+                        icon: '📚',
+                        label: 'Lessons Done',
+                        val: analysis.stats?.completedLessons || 0,
+                        color: '#7C3AED',
+                        sub: 'Completed',
+                      },
+                      {
+                        icon: '⏱️',
+                        label: 'Study Time',
+                        val: analysis.stats?.totalTimeSpentMinutes
+                          ? `${analysis.stats.totalTimeSpentMinutes}m`
+                          : '—',
+                        color: '#0891B2',
+                        sub: 'Total minutes',
+                      },
+                      {
+                        icon: '🔴',
+                        label: 'Weak Topics',
+                        val: analysis.weakTopics?.length || 0,
+                        color: analysis.weakTopics?.length > 0 ? '#DC2626' : '#059669',
+                        sub: analysis.weakTopics?.length > 0 ? 'Need focus' : 'All clear!',
+                      },
                     ].map(s => (
-                      <div key={s.label}>
-                        <div style={{ fontSize:'1.75rem', fontWeight:800, color:s.color }}>{s.val}</div>
-                        <div style={{ fontSize:'.72rem', color:'var(--text-muted)' }}>{s.label}</div>
+                      <div key={s.label} style={{
+                        background:'var(--bg)', border:'1px solid var(--border)',
+                        borderRadius:10, padding:'.75rem', textAlign:'center',
+                      }}>
+                        <div style={{ fontSize:'1.1rem', marginBottom:'.2rem' }}>{s.icon}</div>
+                        <div style={{ fontSize:'1.4rem', fontWeight:800, color:s.color, lineHeight:1 }}>{s.val}</div>
+                        <div style={{ fontSize:'.67rem', fontWeight:600, color:'var(--text-secondary)', margin:'.2rem 0 .1rem' }}>{s.label}</div>
+                        <div style={{ fontSize:'.63rem', color:'var(--text-muted)' }}>{s.sub}</div>
                       </div>
                     ))}
                   </div>
 
+                  {/* ── Course progress bars ── */}
+                  {analysis.courseProgress?.length > 0 && (
+                    <div style={{ marginBottom:'1rem' }}>
+                      <div style={{ fontSize:'.75rem', fontWeight:700, color:'var(--text-secondary)', marginBottom:'.5rem' }}>
+                        📖 Course Progress
+                      </div>
+                      {analysis.courseProgress.map((c, i) => (
+                        <div key={i} style={{ marginBottom:'.5rem' }}>
+                          <div style={{ display:'flex', justifyContent:'space-between', fontSize:'.75rem', marginBottom:'.2rem' }}>
+                            <span style={{ color:'var(--text-primary)', fontWeight:500 }}>{c.courseTitle}</span>
+                            <span style={{ color: c.completionPct >= 80 ? '#059669' : c.completionPct >= 40 ? '#D97706' : '#DC2626', fontWeight:600 }}>
+                              {Math.round(c.completionPct || 0)}%
+                            </span>
+                          </div>
+                          <div style={{ background:'var(--border)', borderRadius:99, height:7, overflow:'hidden' }}>
+                            <div style={{
+                              width:`${Math.min(100, c.completionPct || 0)}%`, height:'100%', borderRadius:99,
+                              background: c.completionPct >= 80 ? '#059669' : c.completionPct >= 40 ? '#D97706' : '#DC2626',
+                              transition:'width .6s ease',
+                            }} />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* ── Weak topics ── */}
                   {analysis.weakTopics?.length > 0 && (
                     <div style={{ marginBottom:'1rem' }}>
-                      <div style={{ fontSize:'.78rem', fontWeight:700, color:'var(--danger)', marginBottom:'.5rem' }}>🔴 Topics Needing Improvement</div>
-                      {analysis.weakTopics.map(t => <XAIBar key={t.topic} label={t.topic} pct={t.percentage} color="var(--danger)" />)}
+                      <div style={{ fontSize:'.75rem', fontWeight:700, color:'#DC2626', marginBottom:'.5rem' }}>
+                        🔴 Topics Needing Improvement
+                      </div>
+                      {analysis.weakTopics.map(t => (
+                        <div key={t.topic} style={{ marginBottom:'.4rem' }}>
+                          <XAIBar label={t.topic} pct={t.percentage} color="#DC2626" />
+                          <div style={{ fontSize:'.67rem', color:'#991B1B', marginTop:'.1rem' }}>
+                            {t.quizzesTaken} quiz{t.quizzesTaken !== 1 ? 'zes' : ''} taken · avg {Math.round(t.percentage)}%
+                            {t.percentage < 40 ? ' · ⚠️ High priority' : ''}
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   )}
 
+                  {/* ── Average topics ── */}
+                  {analysis.averageTopics?.length > 0 && (
+                    <div style={{ marginBottom:'1rem' }}>
+                      <div style={{ fontSize:'.75rem', fontWeight:700, color:'#D97706', marginBottom:'.5rem' }}>
+                        🟡 Average Topics (60–79%)
+                      </div>
+                      {analysis.averageTopics.map(t => (
+                        <XAIBar key={t.topic} label={t.topic} pct={t.percentage} color="#D97706" />
+                      ))}
+                    </div>
+                  )}
+
+                  {/* ── Strong topics ── */}
                   {analysis.strongTopics?.length > 0 && (
-                    <div>
-                      <div style={{ fontSize:'.78rem', fontWeight:700, color:'var(--secondary)', marginBottom:'.5rem' }}>🟢 Strong Topics</div>
-                      {analysis.strongTopics.map(t => <XAIBar key={t.topic} label={t.topic} pct={t.percentage} color="var(--secondary)" />)}
+                    <div style={{ marginBottom:'1rem' }}>
+                      <div style={{ fontSize:'.75rem', fontWeight:700, color:'#059669', marginBottom:'.5rem' }}>
+                        🟢 Strong Topics (80%+)
+                      </div>
+                      {analysis.strongTopics.map(t => (
+                        <XAIBar key={t.topic} label={t.topic} pct={t.percentage} color="#059669" />
+                      ))}
                     </div>
                   )}
 
-                  {/* Global SHAP chart */}
+                  {/* ── ML learning level badge ── */}
+                  {analysis.detectedLevel && (
+                    <div style={{ marginTop:'.75rem', padding:'.6rem 1rem', borderRadius:8,
+                                  background: analysis.detectedLevel === 'advanced' ? '#D1FAE5'
+                                            : analysis.detectedLevel === 'intermediate' ? '#FEF3C7' : '#FEE2E2',
+                                  border:'1px solid var(--border)', fontSize:'.78rem', fontWeight:500 }}>
+                      🧠 ML detected your level: <strong style={{ textTransform:'capitalize' }}>
+                        {analysis.detectedLevel}
+                      </strong>
+                      {analysis.detectedLevel === 'beginner' && ' — Focus on fundamentals first.'}
+                      {analysis.detectedLevel === 'intermediate' && ' — You are making solid progress!'}
+                      {analysis.detectedLevel === 'advanced' && ' — Ready for advanced challenges!'}
+                    </div>
+                  )}
+
+                  {/* ── SHAP chart ── */}
                   {mlInsights?.shapContributions && (
-                    <ShapChart contributions={mlInsights.shapContributions} />
+                    <ShapChart
+                      contributions={mlInsights.shapContributions}
+                      topic={analysis?.weakTopics?.[0]?.topic}
+                    />
                   )}
                 </div>
 
@@ -368,7 +649,10 @@ export default function RecommendationsPage() {
                                   {expandShap[rec._id || i] ? '▲ Hide SHAP detail' : '▼ Show SHAP detail'}
                                 </button>
                                 {expandShap[rec._id || i] && mlInsights?.shapContributions && (
-                                  <ShapChart contributions={mlInsights.shapContributions} />
+                                  <ShapChart
+                                    contributions={mlInsights.shapContributions}
+                                    topic={rec.addressesTopic}
+                                  />
                                 )}
                               </div>
                             )}

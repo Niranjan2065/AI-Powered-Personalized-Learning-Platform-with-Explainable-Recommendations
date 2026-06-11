@@ -6,6 +6,7 @@ const User        = require('../models/User');
 const { generateQuestions }      = require('../services/aiQuizService');
 const { extractTextFromPdfPath } = require('../services/pdfExtractService');
 const { sendQuizResultEmail }    = require('../services/emailService');
+const { generateRecommendationsForStudent } = require('./recommendationController');
 
 // ─────────────────────────────────────────────────────────────
 // FIX: lesson.content is a nested object { text, videoUrl, pdfUrl... }
@@ -364,10 +365,18 @@ exports.submitAttempt = async (req, res) => {
     }
   } catch { /* non-critical — never block the response */ }
 
+  // ── Fire-and-forget: silently regenerate AI recommendations after every attempt ─
+  // This keeps the learning path always up-to-date without blocking the quiz response.
+  setImmediate(async () => {
+    try {
+      await generateRecommendationsForStudent(req.user._id);
+    } catch { /* non-critical — never block the quiz result */ }
+  });
+
   res.status(201).json({
     success: true,
     message: isPassed ? 'Congratulations, you passed!' : 'Quiz submitted.',
-    data: { score, pointsEarned, totalPoints, isPassed, attemptNumber, weakTopics, strongTopics, answers: scoredAnswers },
+    data: { score, pointsEarned, totalPoints, isPassed, attemptNumber, weakTopics, strongTopics, answers: scoredAnswers, recommendationsUpdated: true },
   });
 };
 

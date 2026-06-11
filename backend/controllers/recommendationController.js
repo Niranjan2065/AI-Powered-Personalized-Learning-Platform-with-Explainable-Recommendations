@@ -93,8 +93,9 @@ async function buildRecommendationFromML(studentId, mlData) {
     explanation = {},
   } = mlData;
 
-  const weakTopicNames = weak_topics.map(id => getTopicName(id));
-  const recTopicNames  = recommended_topics.map(id => getTopicName(id));
+  // ML returns numeric IDs — look them up in topic_id_map.json
+  const mlWeakTopicNames = weak_topics.map(id => getTopicName(id));
+  const mlRecTopicNames  = recommended_topics.map(id => getTopicName(id));
 
   const enrollments       = await Enrollment.find({ student: studentId }).populate('course');
   const validEnrollments  = enrollments.filter(e => e.course != null);
@@ -117,8 +118,21 @@ async function buildRecommendationFromML(studentId, mlData) {
     else if (stats.percentage >= 80) strongTopicsSummary.push(entry);
   });
 
-  const items = [];
+  // FIX: Merge ML topic names with real string weak topics from quiz attempts.
+  // ML numeric IDs may not map cleanly to lesson topic strings if the topic_id_map
+  // was built from pre-existing demo data. Real quiz weak topics (from aggregateTopicPerformance)
+  // are always correct string names like 'arrays', 'variables' — use both sources.
+  const realWeakTopics = weakTopicsSummary.map(t => t.topic);
+  const weakTopicNames = [...new Set([...realWeakTopics, ...mlWeakTopicNames])].filter(
+    t => t && !t.startsWith('Topic ')  // drop unresolved numeric fallbacks like "Topic 101"
+  );
+  // If ML names resolved to real strings, use them; otherwise fall back to real weak topics only
+  const recTopicNames = mlRecTopicNames.filter(t => t && !t.startsWith('Topic '));
+
+  // Combine: use all weak topics + ML-recommended topics for lesson matching
   const targetTopics = [...new Set([...weakTopicNames, ...recTopicNames])];
+
+  const items = [];
 
   if (targetTopics.length > 0) {
     const lessons = await Lesson.find({
@@ -138,17 +152,25 @@ async function buildRecommendationFromML(studentId, mlData) {
       const shapContribs    = explanation.shap_contributions || {};
       const topShapFeature  = Object.keys(shapContribs).sort((a, b) => Math.abs(shapContribs[b]) - Math.abs(shapContribs[a]))[0];
 
-      let xaiExplanation = explanation.human_readable
-        ? explanation.human_readable
-        : `This lesson is recommended because you need improvement in "${primaryTopic}".`;
+      // Build rich XAI explanation using real topic score + SHAP insight
+      let xaiExplanation;
+      if (explanation.human_readable && !explanation.human_readable.toLowerCase().includes('cluster 0')) {
+        xaiExplanation = explanation.human_readable;
+      } else {
+        xaiExplanation = topicScore < 60
+          ? `You scored ${topicScore}% on "${primaryTopic}" — the ML model (KMeans cluster ${cluster}) identified this as your top improvement area.`
+          : `"${primaryTopic}" is your next recommended step according to ML cluster ${cluster}.`;
+      }
       if (topShapFeature && shapContribs[topShapFeature] < 0) {
-        xaiExplanation += ` (ML detected: ${topShapFeature.toLowerCase()} is your key improvement area.)`;
+        xaiExplanation += ` SHAP analysis confirms "${topShapFeature}" is the key factor pulling your performance down.`;
+      } else if (topShapFeature && shapContribs[topShapFeature] > 0) {
+        xaiExplanation += ` SHAP shows "${topShapFeature}" as a relative strength — reinforce it here.`;
       }
 
       const reasonFactors = [];
-      if (topicScore < 60) reasonFactors.push({ factor: 'ml_weak_topic', value: topicScore, description: `ML model flagged "${primaryTopic}" as weak (score: ${topicScore}%)` });
-      if (topShapFeature) reasonFactors.push({ factor: 'shap_top_feature', value: shapContribs[topShapFeature], description: `SHAP analysis: "${topShapFeature}" most influenced this recommendation` });
-      if (cluster !== undefined) reasonFactors.push({ factor: 'ml_cluster', value: cluster, description: `You are grouped with similar learners in cluster ${cluster} (KMeans)` });
+      if (topicScore < 60)       reasonFactors.push({ factor: 'ml_weak_topic',    value: topicScore,                   description: `ML flagged "${primaryTopic}" as weak (your score: ${topicScore}%)` });
+      if (topShapFeature)        reasonFactors.push({ factor: 'shap_top_feature', value: shapContribs[topShapFeature],  description: `SHAP: "${topShapFeature}" had the strongest impact on this recommendation` });
+      if (cluster !== undefined) reasonFactors.push({ factor: 'ml_cluster',       value: cluster,                      description: `KMeans grouped you in cluster ${cluster} — peers here improved fastest on "${primaryTopic}"` });
 
       items.push({ type: 'lesson', itemId: lesson._id, itemModel: 'Lesson', explanation: xaiExplanation, addressesTopic: primaryTopic, confidence, priority: Math.round((100 - topicScore) / 10), reasonFactors });
       if (items.length >= MAX_RECOMMENDATIONS) break;
@@ -188,8 +210,10 @@ async function buildRecommendationFromML(studentId, mlData) {
       overallScore, weakTopics: weakTopicsSummary, strongTopics: strongTopicsSummary,
       detectedLevel, coursesAnalyzed: courseIds, totalQuizzesAnalyzed: attempts.length,
       mlCluster: cluster,
-      mlWeakTopics: weak_topics.map(id => ({ id, name: getTopicName(id) })),
-      mlRecommendedTopics: recommended_topics.map(id => ({ id, name: getTopicName(id) })),
+      // FIX: Store resolved real string names alongside numeric IDs so frontend panels
+      // can display "arrays (40%)" instead of "Topic 101"
+      mlWeakTopics: weakTopicNames.map(name => ({ name, score: topicStats[name]?.percentage ?? null })),
+      mlRecommendedTopics: [...new Set([...recTopicNames, ...weakTopicNames])].map(name => ({ name })),
       shapExplanation: explanation,
     },
     generatedBy: 'ml-v1',
@@ -269,4 +293,41 @@ const getAllRecommendations = async (req, res, next) => {
   } catch (error) { next(error); }
 };
 
-module.exports = { generateMyRecommendations, getMyRecommendations, getMyAnalysis, dismissRecommendation, getAllRecommendations, triggerTraining, getMLStatus };
+// ── Internal helper: called by quizController after every quiz attempt ──────────
+// Runs the full ML or rule-based pipeline without needing req/res objects.
+const generateRecommendationsForStudent = async (studentId) => {
+  const mlUp   = await isMLServiceUp();
+  let mlResult = null;
+
+  if (mlUp) {
+    mlResult = await getMLRecommendations(studentId.toString());
+    if (!mlResult) {
+      const { rowCount } = await exportInteractionsCSV();
+      if (rowCount >= 3) {
+        const trainResult = await triggerMLTraining();
+        if (trainResult.success) {
+          mlResult = await getMLRecommendations(studentId.toString());
+        }
+      }
+    }
+  }
+
+  let recommendation;
+  if (mlResult) {
+    recommendation = await buildRecommendationFromML(studentId, mlResult);
+  } else {
+    const result = await generateRuleBased(studentId);
+    if (!result.success) return null;
+    recommendation = result.data;
+  }
+
+  const detectedLevel = recommendation?.analysisSummary?.detectedLevel;
+  if (detectedLevel) {
+    await User.findByIdAndUpdate(studentId, { learningLevel: detectedLevel });
+  }
+
+  console.log(`✅ [Auto-Regen] Recommendations updated for student ${studentId}`);
+  return recommendation;
+};
+
+module.exports = { generateMyRecommendations, getMyRecommendations, getMyAnalysis, dismissRecommendation, getAllRecommendations, triggerTraining, getMLStatus, generateRecommendationsForStudent };

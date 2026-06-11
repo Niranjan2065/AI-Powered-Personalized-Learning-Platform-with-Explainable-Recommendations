@@ -22,7 +22,8 @@ const lessonRoutes = require('./routes/lessonRoutes');
 const quizRoutes = require('./routes/quizRoutes');
 const enrollmentRoutes = require('./routes/enrollmentRoutes');
 const recommendationRoutes = require('./routes/recommendationRoutes');
-const adminRoutes = require('./routes/adminRoutes');
+const adminRoutes      = require('./routes/adminRoutes');
+const tutorChatRoutes  = require('./routes/tutorChatRoutes');
 const devRoutes = require('./routes/devRoutes'); // Dev only
 
 // Connect to MongoDB
@@ -135,6 +136,7 @@ app.use('/api/quizzes', quizRoutes);
 app.use('/api/enrollments', enrollmentRoutes);
 app.use('/api/recommendations', recommendationRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/tutor-chat', tutorChatRoutes);
 if (process.env.NODE_ENV === 'development') {
   app.use('/api/dev', devRoutes); // Data viewer: /api/dev/data
 }

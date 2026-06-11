@@ -67,7 +67,7 @@ def _import_engine():
 
 
 def _import_pipeline():
-    from ai_engine.src.preprocessing import preprocess
+    from ai_engine.src.preprocessing import run_preprocessing as preprocess
     from ai_engine.src.train_model   import train_and_save
     return preprocess, train_and_save
 

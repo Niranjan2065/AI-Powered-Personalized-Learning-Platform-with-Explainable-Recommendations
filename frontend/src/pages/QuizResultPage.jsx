@@ -2,6 +2,7 @@
 import React from 'react';
 import { useLocation, Link } from 'react-router-dom';
 import Navbar from '../components/common/Navbar';
+import AIChatTutor from '../components/student/AIChatTutor';
 
 const ProgressBar = ({ pct, color }) => (
   <div style={{ background:'var(--border)', borderRadius:99, height:8, flex:1 }}>
@@ -127,6 +128,25 @@ export default function QuizResultPage() {
           <Link to="/courses" className="btn btn-ghost">Browse More Courses</Link>
         </div>
       </div>
+
+      {/* AI Chat Tutor — auto-opens with quiz context so student can ask "why did I fail?" */}
+      <AIChatTutor
+        quizStats={result.topicPerformance
+          ? {
+              weakTopics:    Object.entries(result.topicPerformance)
+                .filter(([,v]) => v.percentage < 60)
+                .map(([t,v]) => ({ topic: t, percentage: v.percentage })),
+              averageTopics: Object.entries(result.topicPerformance)
+                .filter(([,v]) => v.percentage >= 60 && v.percentage < 80)
+                .map(([t,v]) => ({ topic: t, percentage: v.percentage })),
+              strongTopics:  Object.entries(result.topicPerformance)
+                .filter(([,v]) => v.percentage >= 80)
+                .map(([t,v]) => ({ topic: t, percentage: v.percentage })),
+            }
+          : null
+        }
+        defaultSubject={quizTitle}
+      />
     </div>
   );
 }

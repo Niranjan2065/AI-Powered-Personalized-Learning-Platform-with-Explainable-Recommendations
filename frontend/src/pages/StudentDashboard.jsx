@@ -11,6 +11,7 @@ import React, { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { toast } from "react-toastify";
 import Navbar from "../components/common/Navbar";
+import AIChatTutor from "../components/student/AIChatTutor";
 import { useAuth } from "../context/AuthContext";
 import axios from "axios";
 import {
@@ -353,6 +354,9 @@ export default function StudentDashboard() {
           </div>
         )}
       </div>
+
+      {/* AI Chat Tutor — floating widget, auto-loads student's weak topics */}
+      <AIChatTutor quizStats={quizStats} />
     </div>
   );
 }
