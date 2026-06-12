@@ -82,6 +82,7 @@ export const updateQuiz          = (id, data)       => API.put(`/quizzes/${id}`,
 export const deleteQuiz          = (id)             => API.delete(`/quizzes/${id}`);
 export const publishQuiz         = (id)             => API.patch(`/quizzes/${id}/publish`);
 export const submitQuiz          = (id, data)       => API.post(`/quizzes/${id}/attempt`, data);
+export const logQuizViolation    = (id, data)       => API.post(`/quizzes/${id}/violation`, data);
 export const getQuizResults      = (id)             => API.get(`/quizzes/${id}/my-attempts`);
 export const getMyAttempts       = (id)             => API.get(`/quizzes/${id}/my-attempts`);
 export const getAttempts         = (id)             => API.get(`/quizzes/${id}/attempts`);

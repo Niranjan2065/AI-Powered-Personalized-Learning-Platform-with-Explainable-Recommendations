@@ -21,6 +21,7 @@ const {
   getAttempts,
   getMyAttempts,
   getCourseAnalytics,
+  logViolation,
 } = require('../controllers/quizController');
 
 const rateLimit = require('express-rate-limit');
@@ -57,6 +58,7 @@ router.patch('/:id/publish', protect, authorize('tutor', 'admin'), publishQuiz);
 
 // ATTEMPTS
 router.post('/:id/attempt',    protect, submitAttempt);
+router.post('/:id/violation',  protect, logViolation);   // anti-cheat: log a proctoring violation
 router.get('/:id/attempts',    protect, authorize('tutor', 'admin'), getAttempts);
 router.get('/:id/my-attempts', protect, getMyAttempts);
 

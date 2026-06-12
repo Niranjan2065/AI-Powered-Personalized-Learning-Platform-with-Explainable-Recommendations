@@ -1,89 +1,93 @@
-// components/student/AIChatTutor.jsx
-// Drop-in AI Chat Tutor widget — powered by Groq via /api/tutor-chat
-// Usage: <AIChatTutor quizStats={quizStats} defaultSubject="Math" />
-
-import React, { useState, useEffect, useRef } from 'react';
+// components/student/AIChatTutor.jsx — v2: improved UX from screenshot feedback
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import './AIChatTutor.css';
 
-const SUBJECT_SUGGESTIONS = {
-  math:        'Try: "Why did I fail Math?" or "Explain quadratic equations simply"',
-  physics:     'Try: "Why do I keep getting Newton\'s laws wrong?"',
-  chemistry:   'Try: "I failed organic chemistry — what should I focus on?"',
-  english:     'Try: "How do I improve my essay structure?"',
-  biology:     'Try: "Explain mitosis in simple terms"',
-  default:     'Try: "Why did I fail?" or "What should I study first?"',
-};
-
 const QUICK_CHIPS = [
-  'Why did I fail?',
-  'What should I study first?',
-  'Give me a practice tip',
-  'Explain the topic simply',
-  'How long to improve?',
+  { label: '❓ Why did I fail?',         msg: 'Why did I fail this quiz? Explain in detail.' },
+  { label: '📚 What to study first?',   msg: 'What topic should I study first to improve?' },
+  { label: '🧠 Explain the weak topic', msg: 'Explain my weakest topic in simple terms with an example.' },
+  { label: '⏱️ How long to improve?',   msg: 'How long will it realistically take me to improve?' },
+  { label: '✏️ Give me a practice tip', msg: 'Give me one specific practice technique for my weak areas.' },
 ];
 
-// Format AI markdown-like responses into JSX
-function formatMessage(text) {
-  return text.split('\n').map((line, i) => {
-    if (line.startsWith('🔍')) return <div key={i} className="aic-section aic-section-why">{line}</div>;
-    if (line.startsWith('✅')) return <div key={i} className="aic-section aic-section-fix">{line}</div>;
-    if (line.startsWith('💡')) return <div key={i} className="aic-section aic-section-tip">{line}</div>;
-    if (line.startsWith('•')) return <div key={i} className="aic-bullet">{line}</div>;
-    if (line.trim() === '') return <div key={i} className="aic-spacer" />;
-    return <div key={i}>{line}</div>;
-  });
+// Render AI response: parse sections and bullets into styled JSX
+function FormatMessage({ text }) {
+  const lines = text.split('\n');
+  return (
+    <div className="aic-response">
+      {lines.map((line, i) => {
+        if (!line.trim()) return <div key={i} className="aic-gap" />;
+        if (line.startsWith('🔍'))
+          return <div key={i} className="aic-tag aic-tag-why"><span className="aic-tag-icon">🔍</span><span>{line.replace('🔍', '').replace(/^[\s:–-]+/, '')}</span></div>;
+        if (line.startsWith('✅'))
+          return <div key={i} className="aic-tag aic-tag-fix"><span className="aic-tag-icon">✅</span><span>{line.replace('✅', '').replace(/^[\s:–-]+/, '')}</span></div>;
+        if (line.startsWith('💡'))
+          return <div key={i} className="aic-tag aic-tag-tip"><span className="aic-tag-icon">💡</span><span>{line.replace('💡', '').replace(/^[\s:–-]+/, '')}</span></div>;
+        if (line.match(/^[•\-]\s/))
+          return <div key={i} className="aic-bullet"><span className="aic-dot" />  <span>{line.replace(/^[•\-]\s/, '')}</span></div>;
+        return <p key={i} className="aic-line">{line}</p>;
+      })}
+    </div>
+  );
 }
 
-export default function AIChatTutor({ quizStats, defaultSubject = '' }) {
-  const [messages, setMessages]   = useState([]);
-  const [input, setInput]         = useState('');
-  const [loading, setLoading]     = useState(false);
-  const [subject, setSubject]     = useState('');
-  const [open, setOpen]           = useState(false);
-  const messagesEndRef             = useRef(null);
+export default function AIChatTutor({
+  quizStats       = null,   // { weakTopics, averageTopics, strongTopics }
+  defaultSubject  = '',     // quiz title string
+  score           = null,   // numeric score e.g. 50
+  quizTitle       = '',     // e.g. "Chapter 3 Quiz"
+}) {
+  const [open, setOpen]         = useState(false);
+  const [messages, setMessages] = useState([]);
+  const [input, setInput]       = useState('');
+  const [loading, setLoading]   = useState(false);
+  const [subject, setSubject]   = useState('');
+  const [showChips, setShowChips] = useState(true);
+  const bottomRef               = useRef(null);
 
-  // Build subject list from quizStats
-  const subjectOptions = quizStats?.weakTopics || quizStats?.averageTopics || quizStats?.strongTopics
-    ? [
-        ...(quizStats.weakTopics    || []).map(t => ({ label: `${t.topic} (${t.percentage}%) ⚠️`,  value: t.topic, score: t.percentage, ctx: `weak`    })),
-        ...(quizStats.averageTopics || []).map(t => ({ label: `${t.topic} (${t.percentage}%) 📈`, value: t.topic, score: t.percentage, ctx: `average` })),
-        ...(quizStats.strongTopics  || []).map(t => ({ label: `${t.topic} (${t.percentage}%) ✅`, value: t.topic, score: t.percentage, ctx: `strong`  })),
-      ]
-    : [];
+  // Build topic chips from quizStats
+  const topicChips = [
+    ...(quizStats?.weakTopics    || []).map(t => ({ ...t, ctx: 'weak'    })),
+    ...(quizStats?.averageTopics || []).map(t => ({ ...t, ctx: 'average' })),
+    ...(quizStats?.strongTopics  || []).map(t => ({ ...t, ctx: 'strong'  })),
+  ];
 
-  // Pre-select weakest subject
+  // Auto-select weakest topic OR quiz title
   useEffect(() => {
-    if (subjectOptions.length && !subject) {
-      setSubject(subjectOptions[0].value);
-    } else if (defaultSubject) {
+    if (topicChips.length) {
+      setSubject(topicChips[0].topic);
+    } else if (defaultSubject && defaultSubject !== 'Quiz') {
       setSubject(defaultSubject);
     }
-  }, [quizStats]);
+  }, [quizStats, defaultSubject]);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, loading]);
 
-  const getSubjectContext = () => {
-    const found = subjectOptions.find(s => s.value === subject);
-    if (!found) return subject ? `Student is asking about ${subject}` : '';
-    const level = found.ctx === 'weak' ? 'struggling' : found.ctx === 'strong' ? 'excelling' : 'making progress';
-    return `Student is ${level} in ${found.value} with a score of ${found.score}%. ${
-      found.ctx === 'weak'
-        ? `They need targeted help understanding core concepts.`
-        : found.ctx === 'average'
-        ? `They understand basics but need help with application.`
-        : `They are doing well but want to go deeper.`
-    }`;
-  };
+  const buildContext = useCallback(() => {
+    const titlePart  = quizTitle && quizTitle !== 'Quiz' ? `Quiz: "${quizTitle}". ` : '';
+    const scorePart  = score !== null ? `Overall score: ${Math.round(score)}%. ` : '';
+    const topicFound = topicChips.find(t => t.topic === subject);
+    let topicPart    = '';
+    if (topicFound) {
+      const lvl = topicFound.ctx === 'weak' ? 'struggling (needs urgent attention)' : topicFound.ctx === 'strong' ? 'strong at' : 'making progress in';
+      topicPart = `Currently focused on topic: "${topicFound.topic}" — student is ${lvl} with ${topicFound.percentage}% accuracy. `;
+    } else if (subject && subject !== 'Quiz') {
+      topicPart = `Subject/topic being discussed: "${subject}". `;
+    }
+    const weakList = quizStats?.weakTopics?.map(t => `${t.topic} (${t.percentage}%)`).join(', ');
+    const weakPart = weakList ? `Weak topics overall: ${weakList}. ` : '';
+    return titlePart + scorePart + topicPart + weakPart;
+  }, [subject, quizStats, score, quizTitle, topicChips]);
 
-  const send = async (text) => {
-    const msg = text || input.trim();
+  const send = async (overrideText) => {
+    const msg = (overrideText || input).trim();
     if (!msg || loading) return;
     setInput('');
+    setShowChips(false);
 
-    const userMsg  = { role: 'user', content: msg };
-    const newMsgs  = [...messages, userMsg];
+    const newMsgs = [...messages, { role: 'user', content: msg }];
     setMessages(newMsgs);
     setLoading(true);
 
@@ -91,64 +95,93 @@ export default function AIChatTutor({ quizStats, defaultSubject = '' }) {
       const token = localStorage.getItem('token');
       const res   = await fetch('/api/tutor-chat', {
         method:  'POST',
-        headers: {
-          'Content-Type':  'application/json',
-          Authorization:   token ? `Bearer ${token}` : '',
-        },
+        headers: { 'Content-Type': 'application/json', Authorization: token ? `Bearer ${token}` : '' },
         body: JSON.stringify({
           messages:       newMsgs,
-          subjectContext: getSubjectContext(),
-          subject:        subject || 'General',
+          subjectContext: buildContext(),
+          subject:        subject || defaultSubject || 'General',
+          score,
+          quizTitle,
         }),
       });
       const data = await res.json();
-      setMessages(prev => [...prev, { role: 'assistant', content: data.reply || 'Sorry, no response received.' }]);
+      setMessages(prev => [...prev, { role: 'assistant', content: data.reply || 'Sorry, I could not respond. Please try again.' }]);
     } catch {
-      setMessages(prev => [...prev, { role: 'assistant', content: 'Connection error. Please try again.' }]);
+      setMessages(prev => [...prev, { role: 'assistant', content: '⚠️ Connection issue. Check your network and try again.' }]);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleKey = e => {
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
-  };
+  const clearChat = () => { setMessages([]); setShowChips(true); };
 
-  const suggestion = SUBJECT_SUGGESTIONS[subject?.toLowerCase()] || SUBJECT_SUGGESTIONS.default;
+  const handleKey = e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } };
 
+  // ── FAB (collapsed) ──
   if (!open) {
     return (
-      <button className="aic-fab" onClick={() => setOpen(true)} aria-label="Open AI Tutor Chat">
-        <span style={{ fontSize: '1.5rem' }}>🤖</span>
-        <span className="aic-fab-label">Ask AI Tutor</span>
+      <button className="aic-fab" onClick={() => setOpen(true)} aria-label="Open AI Tutor">
+        <span className="aic-fab-icon">🤖</span>
+        <span className="aic-fab-text">Ask AI Tutor</span>
+        {quizStats?.weakTopics?.length > 0 && (
+          <span className="aic-fab-badge">{quizStats.weakTopics.length} weak</span>
+        )}
       </button>
     );
   }
 
+  // ── Open widget ──
   return (
-    <div className="aic-widget">
+    <div className="aic-widget" role="dialog" aria-label="AI Chat Tutor">
+
       {/* Header */}
       <div className="aic-header">
-        <div className="aic-header-avatar">🤖</div>
-        <div className="aic-header-info">
-          <div className="aic-header-name">Aria — AI Learning Tutor</div>
-          <div className="aic-header-sub">Explains why you struggle &amp; how to improve</div>
+        <div className="aic-hdr-left">
+          <div className="aic-hdr-avatar">🤖</div>
+          <div>
+            <div className="aic-hdr-name">Aria — AI Learning Tutor</div>
+            <div className="aic-hdr-sub">
+              <span className="aic-online" />
+              {subject && subject !== 'Quiz' ? `Discussing: ${subject}` : 'Ask why you failed & how to improve'}
+            </div>
+          </div>
         </div>
-        <button className="aic-close" onClick={() => setOpen(false)} aria-label="Close">✕</button>
+        <div className="aic-hdr-actions">
+          {messages.length > 0 && (
+            <button className="aic-icon-btn" onClick={clearChat} title="Clear chat" aria-label="Clear chat">
+              🗑
+            </button>
+          )}
+          <button className="aic-icon-btn" onClick={() => setOpen(false)} title="Close" aria-label="Close">
+            ✕
+          </button>
+        </div>
       </div>
 
-      {/* Subject selector (if quiz data available) */}
-      {subjectOptions.length > 0 && (
-        <div className="aic-subjects">
-          {subjectOptions.map(s => (
+      {/* Topic chips — only show when topics from quizStats exist */}
+      {topicChips.length > 0 && (
+        <div className="aic-topics-bar">
+          <span className="aic-topics-label">Focus on:</span>
+          {topicChips.map(t => (
             <button
-              key={s.value}
-              className={`aic-subject-chip ${subject === s.value ? 'active' : ''} aic-chip-${s.ctx}`}
-              onClick={() => setSubject(s.value)}
+              key={t.topic}
+              onClick={() => setSubject(t.topic)}
+              className={`aic-topic-pill aic-topic-${t.ctx}${subject === t.topic ? ' active' : ''}`}
             >
-              {s.value} {s.score}%
+              {t.topic} {t.percentage}%
             </button>
           ))}
+        </div>
+      )}
+
+      {/* Score banner — only on quiz result page */}
+      {score !== null && (
+        <div className={`aic-score-banner ${score >= 70 ? 'pass' : score >= 50 ? 'mid' : 'fail'}`}>
+          <span className="aic-score-val">{Math.round(score)}%</span>
+          <span className="aic-score-label">
+            {score >= 70 ? '✅ Passed' : score >= 50 ? '⚠️ Just below passing' : '❌ Failed'}
+            {quizTitle && quizTitle !== 'Quiz' ? ` · ${quizTitle}` : ''}
+          </span>
         </div>
       )}
 
@@ -156,67 +189,83 @@ export default function AIChatTutor({ quizStats, defaultSubject = '' }) {
       <div className="aic-messages">
         {messages.length === 0 && (
           <div className="aic-empty">
-            <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>💬</div>
-            <div className="aic-empty-title">Ask Aria anything about your results</div>
-            <div className="aic-empty-sub">{suggestion}</div>
+            <div className="aic-empty-icon">💬</div>
+            <div className="aic-empty-title">
+              {score !== null && score < 70
+                ? `You scored ${Math.round(score)}% — want to know why?`
+                : 'Ask Aria about your performance'}
+            </div>
+            <div className="aic-empty-sub">
+              {topicChips.length > 0
+                ? `${topicChips.filter(t => t.ctx === 'weak').length} weak topic(s) detected — tap a chip to ask about one`
+                : 'Tap a suggestion below or type your question'}
+            </div>
           </div>
         )}
 
         {messages.map((m, i) => (
-          <div key={i} className={`aic-msg-row ${m.role}`}>
-            <div className={`aic-avatar ${m.role}`}>{m.role === 'user' ? 'You' : 'AI'}</div>
-            <div className={`aic-bubble ${m.role}`}>
-              {m.role === 'assistant' ? formatMessage(m.content) : m.content}
+          <div key={i} className={`aic-row aic-row-${m.role}`}>
+            <div className={`aic-av aic-av-${m.role}`}>{m.role === 'user' ? 'You' : 'AI'}</div>
+            <div className={`aic-bub aic-bub-${m.role}`}>
+              {m.role === 'assistant'
+                ? <FormatMessage text={m.content} />
+                : m.content}
             </div>
           </div>
         ))}
 
         {loading && (
-          <div className="aic-msg-row assistant">
-            <div className="aic-avatar assistant">AI</div>
-            <div className="aic-typing">
-              <span /><span /><span />
-            </div>
+          <div className="aic-row aic-row-assistant">
+            <div className="aic-av aic-av-assistant">AI</div>
+            <div className="aic-typing"><span/><span/><span/></div>
           </div>
         )}
-        <div ref={messagesEndRef} />
+        <div ref={bottomRef} />
       </div>
 
-      {/* Quick chips */}
-      {messages.length === 0 && (
-        <div className="aic-chips">
+      {/* Quick chips — disappear after first message */}
+      {showChips && messages.length === 0 && (
+        <div className="aic-chips-row">
           {QUICK_CHIPS.map(c => (
-            <button key={c} className="aic-chip" onClick={() => send(c)}>{c}</button>
+            <button key={c.label} className="aic-qchip" onClick={() => send(c.msg)}>
+              {c.label}
+            </button>
           ))}
         </div>
       )}
 
-      {/* Input */}
-      <div className="aic-input-row">
-        {subjectOptions.length === 0 && (
+      {/* Input area */}
+      <div className="aic-input-area">
+        {/* Subject selector — text input only if no topic chips */}
+        {topicChips.length === 0 && (
           <input
-            className="aic-subject-input"
-            placeholder="Subject…"
-            value={subject}
+            className="aic-subj-input"
+            value={subject === defaultSubject && defaultSubject !== 'Quiz' ? '' : subject}
             onChange={e => setSubject(e.target.value)}
+            placeholder={defaultSubject && defaultSubject !== 'Quiz' ? defaultSubject : 'Topic…'}
+            title="Topic / subject"
           />
         )}
         <input
-          className="aic-input"
-          placeholder={`Ask about ${subject || 'your results'}…`}
+          className="aic-text-input"
           value={input}
           onChange={e => setInput(e.target.value)}
           onKeyDown={handleKey}
+          placeholder={
+            subject && subject !== 'Quiz'
+              ? `Ask about "${subject}"…`
+              : 'Ask why you failed, or how to improve…'
+          }
           disabled={loading}
           autoComplete="off"
         />
         <button
-          className="aic-send"
+          className="aic-send-btn"
           onClick={() => send()}
           disabled={loading || !input.trim()}
           aria-label="Send"
         >
-          ➤
+          {loading ? <span className="aic-spin" /> : '➤'}
         </button>
       </div>
     </div>

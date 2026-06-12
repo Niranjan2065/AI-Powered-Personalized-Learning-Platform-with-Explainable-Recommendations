@@ -331,12 +331,95 @@ exports.submitAttempt = async (req, res) => {
   if (!quiz || !quiz.isPublished) {
     return res.status(404).json({ success: false, message: 'Quiz not found or not published' });
   }
-  if (quiz.maxAttempts > 0) {
-    const prevCount = await QuizAttempt.countDocuments({ quiz: quiz._id, student: req.user._id });
-    if (prevCount >= quiz.maxAttempts) {
-      return res.status(400).json({ success: false, message: `Max ${quiz.maxAttempts} attempts reached` });
+  // ── Option C: Adaptive attempt limit ────────────────────────────────────────
+  // Instead of a hard block, analyse the student's history and respond smartly:
+  //  • < COOLDOWN_ATTEMPTS and avg < 40% → suggest lesson review first (soft block)
+  //  • >= maxAttempts and avg >= 40%     → cooldown period (timed block)
+  //  • >= maxAttempts and avg < 40%      → redirect to lesson (hard adaptive block)
+  const COOLDOWN_MINUTES  = 10;
+  const LOW_SCORE_CUTOFF  = 40;   // below this = suggest lesson review
+  const STRUGGLE_ATTEMPTS = 3;    // after 3 fails below 40%, trigger soft block
+
+  const prevAttempts = await QuizAttempt.find({
+    quiz: quiz._id, student: req.user._id,
+  }).sort({ createdAt: -1 }).lean();
+
+  const prevCount = prevAttempts.length;
+
+  if (prevCount > 0) {
+    const avgScore = Math.round(
+      prevAttempts.reduce((sum, a) => sum + (a.score || 0), 0) / prevCount
+    );
+    const lastAttempt    = prevAttempts[0];
+    const lastScore      = lastAttempt?.score || 0;
+    const minutesSinceLast = (Date.now() - new Date(lastAttempt.completedAt)) / 60000;
+
+    // ── Case 1: Hard maxAttempts limit set by tutor ───────────────────────────
+    if (quiz.maxAttempts > 0 && prevCount >= quiz.maxAttempts) {
+      // If avg score is very low → redirect to lesson instead of plain block
+      if (avgScore < LOW_SCORE_CUTOFF) {
+        return res.status(403).json({
+          success:      false,
+          adaptiveBlock: true,
+          blockType:    'lesson_review',
+          message:      `You have attempted this quiz ${prevCount} times with an average score of ${avgScore}%. The AI recommends reviewing the lesson material first before trying again.`,
+          avgScore,
+          prevAttempts: prevCount,
+          lessonId:     quiz.lesson || null,
+          weakTopics:   lastAttempt.weakTopics || [],
+          suggestion:   'Review the lesson, then come back to this quiz.',
+        });
+      }
+      // Otherwise standard cooldown block
+      if (minutesSinceLast < COOLDOWN_MINUTES) {
+        const waitMin = Math.ceil(COOLDOWN_MINUTES - minutesSinceLast);
+        return res.status(403).json({
+          success:      false,
+          adaptiveBlock: true,
+          blockType:    'cooldown',
+          message:      `You have reached the attempt limit. Please wait ${waitMin} more minute${waitMin !== 1 ? 's' : ''} before trying again.`,
+          waitMinutes:  waitMin,
+          avgScore,
+          prevAttempts: prevCount,
+        });
+      }
+    }
+
+    // ── Case 2: No hard limit but struggling (3+ fails below 40%) ────────────
+    if (!quiz.maxAttempts || quiz.maxAttempts === 0) {
+      const recentFails = prevAttempts
+        .slice(0, STRUGGLE_ATTEMPTS)
+        .filter(a => (a.score || 0) < LOW_SCORE_CUTOFF);
+
+      if (recentFails.length >= STRUGGLE_ATTEMPTS) {
+        // Cooldown expired — let them retry but warn them
+        if (minutesSinceLast >= COOLDOWN_MINUTES) {
+          // Allow through — attach a softBlock flag so frontend shows a warning banner
+          req.softBlock = {
+            avgScore,
+            prevAttempts: prevCount,
+            weakTopics:   lastAttempt.weakTopics || [],
+            lessonId:     quiz.lesson || null,
+          };
+        } else {
+          const waitMin = Math.ceil(COOLDOWN_MINUTES - minutesSinceLast);
+          return res.status(403).json({
+            success:      false,
+            adaptiveBlock: true,
+            blockType:    'struggle_cooldown',
+            message:      `You have scored below ${LOW_SCORE_CUTOFF}% on your last ${STRUGGLE_ATTEMPTS} attempts (avg: ${avgScore}%). Take a ${waitMin}-minute break and review the lesson material first.`,
+            waitMinutes:  waitMin,
+            avgScore,
+            prevAttempts: prevCount,
+            lessonId:     quiz.lesson || null,
+            weakTopics:   lastAttempt.weakTopics || [],
+            suggestion:   'The AI has updated your learning path with lesson recommendations to help you improve.',
+          });
+        }
+      }
     }
   }
+  // ── End adaptive block ────────────────────────────────────────────────────
   const attemptNumber = (await QuizAttempt.countDocuments({ quiz: quiz._id, student: req.user._id })) + 1;
   const { scoredAnswers, score, pointsEarned, totalPoints, isPassed, weakTopics, strongTopics } =
     scoreAttempt(quiz, req.body.answers || []);
@@ -346,6 +429,11 @@ exports.submitAttempt = async (req, res) => {
     answers: scoredAnswers, score, pointsEarned, totalPoints, isPassed,
     timeTaken: req.body.timeTaken || 0, completedAt: new Date(),
     attemptNumber, weakTopics, strongTopics,
+    // ── Proctoring / anti-cheat fields ─────────────────────────────
+    isFlagged:           req.body.isFlagged           || false,
+    violationCount:      req.body.violationCount      || 0,
+    violations:          req.body.violations          || [],
+    terminatedByProctor: req.body.terminatedByProctor || false,
   });
 
   await Quiz.findByIdAndUpdate(quiz._id, {
@@ -376,7 +464,13 @@ exports.submitAttempt = async (req, res) => {
   res.status(201).json({
     success: true,
     message: isPassed ? 'Congratulations, you passed!' : 'Quiz submitted.',
-    data: { score, pointsEarned, totalPoints, isPassed, attemptNumber, weakTopics, strongTopics, answers: scoredAnswers, recommendationsUpdated: true },
+    data: {
+      score, pointsEarned, totalPoints, isPassed, attemptNumber,
+      weakTopics, strongTopics, answers: scoredAnswers,
+      recommendationsUpdated: true,
+      // softBlock: present when student is struggling but cooldown has passed
+      softBlock: req.softBlock || null,
+    },
   });
 };
 
@@ -427,4 +521,33 @@ exports.getQuizzesByCourse = async (req, res) => {
     isPublished: true,
   }).populate('lesson', 'title order module').sort({ createdAt: 1 }).lean();
   res.json({ success: true, count: quizzes.length, data: quizzes });
+};
+
+// ─────────────────────────────────────────────────────────────
+// POST /api/quizzes/:id/violation  (student, protected)
+// Appends a real-time violation event to an existing in-progress attempt.
+// Called during the quiz when a violation is detected, before final submission.
+// ─────────────────────────────────────────────────────────────
+exports.logViolation = async (req, res) => {
+  const { type, message, timestamp } = req.body;
+  if (!type) return res.status(400).json({ success: false, message: 'Violation type required' });
+
+  // Find the student's most recent (in-progress) attempt for this quiz
+  const attempt = await QuizAttempt.findOne({
+    quiz:    req.params.id,
+    student: req.user._id,
+  }).sort({ createdAt: -1 });
+
+  if (!attempt) {
+    // No attempt yet (violation fired before submission) — log silently
+    return res.status(200).json({ success: true, message: 'No attempt found, violation noted' });
+  }
+
+  // Append the violation
+  attempt.violations.push({ type, message, timestamp: timestamp ? new Date(timestamp) : new Date() });
+  attempt.violationCount = attempt.violations.length;
+  attempt.isFlagged      = true;
+  await attempt.save();
+
+  res.status(200).json({ success: true, message: 'Violation logged', violationCount: attempt.violationCount });
 };

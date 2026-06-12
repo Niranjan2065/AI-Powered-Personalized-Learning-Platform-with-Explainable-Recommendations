@@ -2,8 +2,19 @@
 // ─────────────────────────────────────────────────────────────
 // Records every student quiz attempt.
 // Powers the analytics and explainable-recommendation engine.
+// Updated: Added anti-cheating / proctoring fields.
 // ─────────────────────────────────────────────────────────────
 const mongoose = require('mongoose');
+
+// Sub-schema for individual violation events
+const violationSchema = new mongoose.Schema(
+  {
+    type:      { type: String },  // 'tab_switch' | 'window_blur' | 'copy_attempt' | etc.
+    message:   { type: String },
+    timestamp: { type: Date, default: Date.now },
+  },
+  { _id: false }
+);
 
 const answerSchema = new mongoose.Schema(
   {
@@ -37,6 +48,12 @@ const quizAttemptSchema = new mongoose.Schema(
     // Weak areas identified — fed into recommendation engine
     weakTopics:   [String],
     strongTopics: [String],
+
+    // ── Anti-cheating / Proctoring ────────────────────────────
+    isFlagged:           { type: Boolean, default: false },       // true if violations detected
+    violationCount:      { type: Number,  default: 0 },           // total violations recorded
+    violations:          [violationSchema],                        // detailed violation log
+    terminatedByProctor: { type: Boolean, default: false },       // true if quiz was force-submitted
   },
   { timestamps: true }
 );

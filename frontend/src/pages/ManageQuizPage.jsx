@@ -410,10 +410,11 @@ export default function ManageQuizPage() {
                 {/* Summary Stats */}
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
                   {[
-                    { label: 'Total Attempts', value: attempts.length, color: 'var(--primary)' },
-                    { label: 'Avg. Score', value: `${Math.round(attempts.reduce((s, a) => s + a.score, 0) / attempts.length)}%`, color: '#F59E0B' },
-                    { label: 'Pass Rate', value: `${Math.round(attempts.filter(a => a.isPassed).length / attempts.length * 100)}%`, color: '#16A34A' },
-                    { label: 'Unique Students', value: new Set(attempts.map(a => a.student?._id)).size, color: '#8B5CF6' },
+                    { label: 'Total Attempts',  value: attempts.length,                                                                                                  color: 'var(--primary)' },
+                    { label: 'Avg. Score',       value: `${Math.round(attempts.reduce((s, a) => s + a.score, 0) / attempts.length)}%`,                                   color: '#F59E0B' },
+                    { label: 'Pass Rate',        value: `${Math.round(attempts.filter(a => a.isPassed).length / attempts.length * 100)}%`,                               color: '#16A34A' },
+                    { label: 'Unique Students',  value: new Set(attempts.map(a => a.student?._id)).size,                                                                 color: '#8B5CF6' },
+                    { label: '🚩 Flagged',       value: attempts.filter(a => a.isFlagged).length,                                                                        color: '#DC2626' },
                   ].map(({ label, value, color }) => (
                     <div key={label} className="card" style={{ padding: '1rem', textAlign: 'center' }}>
                       <div style={{ fontSize: '1.5rem', fontWeight: 800, color }}>{value}</div>
@@ -428,14 +429,14 @@ export default function ManageQuizPage() {
                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '.85rem' }}>
                       <thead>
                         <tr style={{ background: 'var(--primary-light)', color: 'var(--primary)' }}>
-                          {['Student', 'Score', 'Result', 'Attempt #', 'Completed', 'Weak Topics'].map(h => (
+                          {['Student', 'Score', 'Result', 'Attempt #', 'Completed', 'Integrity', 'Weak Topics'].map(h => (
                             <th key={h} style={{ padding: '.75rem 1rem', textAlign: 'left', fontWeight: 700, fontSize: '.78rem', textTransform: 'uppercase', letterSpacing: '.04em', whiteSpace: 'nowrap' }}>{h}</th>
                           ))}
                         </tr>
                       </thead>
                       <tbody>
                         {attempts.map((att, i) => (
-                          <tr key={att._id} style={{ borderTop: '1px solid var(--border)', background: i % 2 === 0 ? 'transparent' : '#FAFBFF' }}>
+                          <tr key={att._id} style={{ borderTop: '1px solid var(--border)', background: att.isFlagged ? '#FFF5F5' : i % 2 === 0 ? 'transparent' : '#FAFBFF' }}>
                             <td style={{ padding: '.7rem 1rem' }}>
                               <div style={{ fontWeight: 600 }}>{att.student?.name || 'Unknown'}</div>
                               <div style={{ fontSize: '.72rem', color: 'var(--text-muted)' }}>{att.student?.email || ''}</div>
@@ -451,6 +452,49 @@ export default function ManageQuizPage() {
                             <td style={{ padding: '.7rem 1rem', color: 'var(--text-muted)' }}>#{att.attemptNumber || 1}</td>
                             <td style={{ padding: '.7rem 1rem', color: 'var(--text-muted)', fontSize: '.78rem', whiteSpace: 'nowrap' }}>
                               {att.completedAt ? new Date(att.completedAt).toLocaleDateString() : '—'}
+                            </td>
+                            {/* Integrity / Flagged column */}
+                            <td style={{ padding: '.7rem 1rem' }}>
+                              {att.isFlagged ? (
+                                <div>
+                                  <span style={{
+                                    display: 'inline-flex', alignItems: 'center', gap: '.35rem',
+                                    padding: '3px 8px', borderRadius: 999,
+                                    background: '#FEE2E2', color: '#DC2626',
+                                    fontSize: '.68rem', fontWeight: 700,
+                                  }}>
+                                    🚩 FLAGGED
+                                  </span>
+                                  {att.violationCount > 0 && (
+                                    <div style={{ fontSize: '.68rem', color: '#DC2626', marginTop: '.2rem' }}>
+                                      {att.violationCount} violation{att.violationCount !== 1 ? 's' : ''}
+                                      {att.terminatedByProctor && ' · auto-submitted'}
+                                    </div>
+                                  )}
+                                  {/* Violation type breakdown */}
+                                  {att.violations?.length > 0 && (
+                                    <div style={{ marginTop: '.3rem', display: 'flex', flexWrap: 'wrap', gap: '.2rem' }}>
+                                      {[...new Set(att.violations.map(v => v.type))].map(type => (
+                                        <span key={type} style={{
+                                          fontSize: '.6rem', padding: '1px 6px', borderRadius: 999,
+                                          background: '#FECACA', color: '#7F1D1D',
+                                        }}>
+                                          {type.replace(/_/g, ' ')}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              ) : (
+                                <span style={{
+                                  display: 'inline-flex', alignItems: 'center', gap: '.35rem',
+                                  padding: '3px 8px', borderRadius: 999,
+                                  background: '#DCFCE7', color: '#15803D',
+                                  fontSize: '.68rem', fontWeight: 700,
+                                }}>
+                                  ✓ Clean
+                                </span>
+                              )}
                             </td>
                             <td style={{ padding: '.7rem 1rem' }}>
                               {att.weakTopics?.length > 0 ? (
