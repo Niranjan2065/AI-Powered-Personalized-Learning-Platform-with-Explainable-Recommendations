@@ -61,7 +61,7 @@ export default function QuizPage() {
     submitOnce.current = true;
     toast.error('🚫 Quiz auto-submitted due to repeated violations!', { autoClose: 5000 });
     await handleSubmit(true, { isFlagged: true, violations: violationLog, terminatedByProctor: true });
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []); 
 
   // ── Violation warning (1st / 2nd violation) ─────────────────────────────────
   const handleViolation = useCallback((violation) => {
@@ -112,7 +112,7 @@ export default function QuizPage() {
       });
     }, 1000);
     return () => clearInterval(timerRef.current);
-  }, [timeLeft !== null, quizStarted]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [timeLeft !== null, quizStarted]); 
 
   const handleAnswer = (questionId, answer) => {
     setAnswers(prev => ({ ...prev, [questionId]: answer }));
