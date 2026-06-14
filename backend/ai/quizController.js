@@ -8,9 +8,6 @@ const { extractTextFromPdfPath } = require('../services/pdfExtractService');
 const { sendQuizResultEmail }    = require('../services/emailService');
 const { generateRecommendationsForStudent } = require('./recommendationController');
 
-// NEW: forgetting curve scheduler
-const { updateReviewSchedule } = require('../ai/forgettingCurve');
-
 // ─────────────────────────────────────────────────────────────
 // FIX: lesson.content is a nested object { text, videoUrl, pdfUrl... }
 // not a plain string. Extract the actual text correctly.
@@ -20,10 +17,12 @@ async function getLessonContent(lessonId) {
   const lesson = await Lesson.findById(lessonId).populate('course', '_id');
   if (!lesson) throw Object.assign(new Error('Lesson not found'), { statusCode: 404 });
 
+  // lesson.content is { text: '...', videoUrl: '...', pdfUrl: '...' }
+  // Pull the text out of the nested object, then fall back to description
   const contentObj = lesson.content || {};
   const content = (
-    contentObj.text    ||
-    lesson.description ||
+    contentObj.text          ||   // text lesson
+    lesson.description       ||   // fallback field
     ''
   ).trim();
 
@@ -57,13 +56,13 @@ function scoreAttempt(quiz, answers) {
     if (q.topic) (isCorrect ? strongTopics : weakTopics).add(q.topic);
 
     return {
-      questionId:      q._id,
-      questionText:    q.questionText,
-      selectedOption:  submitted?.selectedOption || '',
-      selectedAnswer:  submitted?.selectedAnswer || '',
+      questionId:     q._id,
+      questionText:   q.questionText,
+      selectedOption: submitted?.selectedOption || '',
+      selectedAnswer: submitted?.selectedAnswer || '',
       isCorrect,
-      pointsEarned:    pts,
-      timeTaken:       submitted?.timeTaken || 0,
+      pointsEarned:   pts,
+      timeTaken:      submitted?.timeTaken || 0,
     };
   });
 
@@ -97,6 +96,7 @@ exports.generateQuiz = async (req, res) => {
 
   const { lesson, content } = await getLessonContent(lessonId);
 
+  // Give a helpful message depending on why content is empty
   if (!content || content.length < 50) {
     const contentObj = lesson.content || {};
     const isVideo = !!contentObj.videoUrl;
@@ -230,14 +230,14 @@ exports.createQuiz = async (req, res) => {
   }
 
   const quiz = await Quiz.create({
-    lesson:        lessonId     || null,
-    course:        courseId     || null,
-    creator:       req.user._id,
+    lesson:       lessonId  || null,
+    course:       courseId  || null,
+    creator:      req.user._id,
     title,
-    description:   description  || '',
-    questions:     questions    || [],
-    timeLimit:     timeLimit    || 0,
-    passingScore:  passingScore || 70,
+    description:  description  || '',
+    questions:    questions    || [],
+    timeLimit:    timeLimit    || 0,
+    passingScore: passingScore || 70,
     isAIGenerated: false,
     isPublished:   false,
   });
@@ -250,6 +250,7 @@ exports.createQuiz = async (req, res) => {
 // ─────────────────────────────────────────────────────────────
 exports.getQuizzesByLesson = async (req, res) => {
   const { lessonId } = req.params;
+  // FIX: include 'tutor' as instructor-level role
   const isInstructor = ['tutor', 'instructor', 'admin'].includes(req.user?.role);
 
   const filter = { lesson: lessonId };
@@ -277,7 +278,7 @@ exports.getQuiz = async (req, res) => {
 };
 
 // ─────────────────────────────────────────────────────────────
-// GET /api/quizzes/:id/full  (tutor/admin)
+// GET /api/quizzes/:id/full  (tutor/admin — includes answers)
 // ─────────────────────────────────────────────────────────────
 exports.getQuizFull = async (req, res) => {
   const quiz = await Quiz.findById(req.params.id).lean();
@@ -297,11 +298,7 @@ exports.publishQuiz = async (req, res) => {
   quiz.isPublished = !quiz.isPublished;
   if (quiz.isPublished) quiz.publishedAt = new Date();
   await quiz.save();
-  res.status(200).json({
-    success: true,
-    message: `Quiz ${quiz.isPublished ? 'published' : 'unpublished'}`,
-    data:    { isPublished: quiz.isPublished },
-  });
+  res.status(200).json({ success: true, message: `Quiz ${quiz.isPublished ? 'published' : 'unpublished'}`, data: { isPublished: quiz.isPublished } });
 };
 
 // ─────────────────────────────────────────────────────────────
@@ -334,11 +331,14 @@ exports.submitAttempt = async (req, res) => {
   if (!quiz || !quiz.isPublished) {
     return res.status(404).json({ success: false, message: 'Quiz not found or not published' });
   }
-
-  // ── Adaptive attempt limit ────────────────────────────────────────────────
+  // ── Option C: Adaptive attempt limit ────────────────────────────────────────
+  // Instead of a hard block, analyse the student's history and respond smartly:
+  //  • < COOLDOWN_ATTEMPTS and avg < 40% → suggest lesson review first (soft block)
+  //  • >= maxAttempts and avg >= 40%     → cooldown period (timed block)
+  //  • >= maxAttempts and avg < 40%      → redirect to lesson (hard adaptive block)
   const COOLDOWN_MINUTES  = 10;
-  const LOW_SCORE_CUTOFF  = 40;
-  const STRUGGLE_ATTEMPTS = 3;
+  const LOW_SCORE_CUTOFF  = 40;   // below this = suggest lesson review
+  const STRUGGLE_ATTEMPTS = 3;    // after 3 fails below 40%, trigger soft block
 
   const prevAttempts = await QuizAttempt.find({
     quiz: quiz._id, student: req.user._id,
@@ -350,57 +350,76 @@ exports.submitAttempt = async (req, res) => {
     const avgScore = Math.round(
       prevAttempts.reduce((sum, a) => sum + (a.score || 0), 0) / prevCount
     );
-    const lastAttempt      = prevAttempts[0];
+    const lastAttempt    = prevAttempts[0];
+    const lastScore      = lastAttempt?.score || 0;
     const minutesSinceLast = (Date.now() - new Date(lastAttempt.completedAt)) / 60000;
 
+    // ── Case 1: Hard maxAttempts limit set by tutor ───────────────────────────
     if (quiz.maxAttempts > 0 && prevCount >= quiz.maxAttempts) {
+      // If avg score is very low → redirect to lesson instead of plain block
       if (avgScore < LOW_SCORE_CUTOFF) {
         return res.status(403).json({
-          success: false, adaptiveBlock: true, blockType: 'lesson_review',
-          message: `You have attempted this quiz ${prevCount} times with an average score of ${avgScore}%. The AI recommends reviewing the lesson material first before trying again.`,
-          avgScore, prevAttempts: prevCount, lessonId: quiz.lesson || null,
-          weakTopics: lastAttempt.weakTopics || [],
-          suggestion: 'Review the lesson, then come back to this quiz.',
+          success:      false,
+          adaptiveBlock: true,
+          blockType:    'lesson_review',
+          message:      `You have attempted this quiz ${prevCount} times with an average score of ${avgScore}%. The AI recommends reviewing the lesson material first before trying again.`,
+          avgScore,
+          prevAttempts: prevCount,
+          lessonId:     quiz.lesson || null,
+          weakTopics:   lastAttempt.weakTopics || [],
+          suggestion:   'Review the lesson, then come back to this quiz.',
         });
       }
+      // Otherwise standard cooldown block
       if (minutesSinceLast < COOLDOWN_MINUTES) {
         const waitMin = Math.ceil(COOLDOWN_MINUTES - minutesSinceLast);
         return res.status(403).json({
-          success: false, adaptiveBlock: true, blockType: 'cooldown',
-          message: `You have reached the attempt limit. Please wait ${waitMin} more minute${waitMin !== 1 ? 's' : ''} before trying again.`,
-          waitMinutes: waitMin, avgScore, prevAttempts: prevCount,
+          success:      false,
+          adaptiveBlock: true,
+          blockType:    'cooldown',
+          message:      `You have reached the attempt limit. Please wait ${waitMin} more minute${waitMin !== 1 ? 's' : ''} before trying again.`,
+          waitMinutes:  waitMin,
+          avgScore,
+          prevAttempts: prevCount,
         });
       }
     }
 
+    // ── Case 2: No hard limit but struggling (3+ fails below 40%) ────────────
     if (!quiz.maxAttempts || quiz.maxAttempts === 0) {
       const recentFails = prevAttempts
         .slice(0, STRUGGLE_ATTEMPTS)
         .filter(a => (a.score || 0) < LOW_SCORE_CUTOFF);
 
       if (recentFails.length >= STRUGGLE_ATTEMPTS) {
+        // Cooldown expired — let them retry but warn them
         if (minutesSinceLast >= COOLDOWN_MINUTES) {
+          // Allow through — attach a softBlock flag so frontend shows a warning banner
           req.softBlock = {
-            avgScore, prevAttempts: prevCount,
-            weakTopics: lastAttempt.weakTopics || [],
-            lessonId:   quiz.lesson || null,
+            avgScore,
+            prevAttempts: prevCount,
+            weakTopics:   lastAttempt.weakTopics || [],
+            lessonId:     quiz.lesson || null,
           };
         } else {
           const waitMin = Math.ceil(COOLDOWN_MINUTES - minutesSinceLast);
           return res.status(403).json({
-            success: false, adaptiveBlock: true, blockType: 'struggle_cooldown',
-            message: `You have scored below ${LOW_SCORE_CUTOFF}% on your last ${STRUGGLE_ATTEMPTS} attempts (avg: ${avgScore}%). Take a ${waitMin}-minute break and review the lesson material first.`,
-            waitMinutes: waitMin, avgScore, prevAttempts: prevCount,
-            lessonId: quiz.lesson || null,
-            weakTopics: lastAttempt.weakTopics || [],
-            suggestion: 'The AI has updated your learning path with lesson recommendations to help you improve.',
+            success:      false,
+            adaptiveBlock: true,
+            blockType:    'struggle_cooldown',
+            message:      `You have scored below ${LOW_SCORE_CUTOFF}% on your last ${STRUGGLE_ATTEMPTS} attempts (avg: ${avgScore}%). Take a ${waitMin}-minute break and review the lesson material first.`,
+            waitMinutes:  waitMin,
+            avgScore,
+            prevAttempts: prevCount,
+            lessonId:     quiz.lesson || null,
+            weakTopics:   lastAttempt.weakTopics || [],
+            suggestion:   'The AI has updated your learning path with lesson recommendations to help you improve.',
           });
         }
       }
     }
   }
   // ── End adaptive block ────────────────────────────────────────────────────
-
   const attemptNumber = (await QuizAttempt.countDocuments({ quiz: quiz._id, student: req.user._id })) + 1;
   const { scoredAnswers, score, pointsEarned, totalPoints, isPassed, weakTopics, strongTopics } =
     scoreAttempt(quiz, req.body.answers || []);
@@ -410,6 +429,7 @@ exports.submitAttempt = async (req, res) => {
     answers: scoredAnswers, score, pointsEarned, totalPoints, isPassed,
     timeTaken: req.body.timeTaken || 0, completedAt: new Date(),
     attemptNumber, weakTopics, strongTopics,
+    // ── Proctoring / anti-cheat fields ─────────────────────────────
     isFlagged:           req.body.isFlagged           || false,
     violationCount:      req.body.violationCount      || 0,
     violations:          req.body.violations          || [],
@@ -421,7 +441,7 @@ exports.submitAttempt = async (req, res) => {
     $set: { averageScore: Math.round(((quiz.averageScore * quiz.totalAttempts) + score) / (quiz.totalAttempts + 1)) },
   });
 
-  // ── Fire-and-forget quiz result email ────────────────────────────────────
+  // ── Fire-and-forget quiz result email ────────────────────
   try {
     const student = await User.findById(req.user._id).select('name email');
     if (student?.email) {
@@ -431,33 +451,14 @@ exports.submitAttempt = async (req, res) => {
         { score, isPassed, pointsEarned, totalPoints, weakTopics, attemptNumber }
       );
     }
-  } catch { /* non-critical */ }
+  } catch { /* non-critical — never block the response */ }
 
-  // ── Fire-and-forget: forgetting curve + recommendations ──────────────────
-  // Both run in the background so the quiz response is never delayed.
+  // ── Fire-and-forget: silently regenerate AI recommendations after every attempt ─
+  // This keeps the learning path always up-to-date without blocking the quiz response.
   setImmediate(async () => {
     try {
-      // 1. Update spaced-repetition schedule for this lesson
-      //    quiz.lesson is the ObjectId of the lesson this quiz belongs to.
-      //    quiz.course is the course ObjectId.
-      //    moduleId is not directly on the quiz — forgettingCurve.js looks it up
-      //    from the Lesson document automatically when moduleId is null.
-      if (quiz.lesson) {
-        await updateReviewSchedule(
-          req.user._id,   // studentId
-          quiz.lesson,    // lessonId
-          quiz.course,    // courseId
-          null,           // moduleId — resolved automatically inside updateReviewSchedule
-          score           // quiz score 0-100
-        );
-      }
-
-      // 2. Regenerate AI recommendations (existing behaviour — unchanged)
       await generateRecommendationsForStudent(req.user._id);
-
-    } catch (err) {
-      console.error('[SR] forgettingCurve or regen error (non-critical):', err.message);
-    }
+    } catch { /* non-critical — never block the quiz result */ }
   });
 
   res.status(201).json({
@@ -467,6 +468,7 @@ exports.submitAttempt = async (req, res) => {
       score, pointsEarned, totalPoints, isPassed, attemptNumber,
       weakTopics, strongTopics, answers: scoredAnswers,
       recommendationsUpdated: true,
+      // softBlock: present when student is struggling but cooldown has passed
       softBlock: req.softBlock || null,
     },
   });
@@ -500,10 +502,9 @@ exports.getCourseAnalytics = async (req, res) => {
     QuizAttempt.find({ course: courseId }).select('score isPassed weakTopics student').lean(),
   ]);
   const allWeakTopics = attempts.flatMap(a => a.weakTopics || []);
-  const topicFreq     = allWeakTopics.reduce((acc, t) => { acc[t] = (acc[t] || 0) + 1; return acc; }, {});
+  const topicFreq = allWeakTopics.reduce((acc, t) => { acc[t] = (acc[t] || 0) + 1; return acc; }, {});
   const topWeakTopics = Object.entries(topicFreq).sort((a, b) => b[1] - a[1]).slice(0, 10).map(([topic, count]) => ({ topic, count }));
-  const overallAvg    = attempts.length ? Math.round(attempts.reduce((s, a) => s + a.score, 0) / attempts.length) : 0;
-
+  const overallAvg = attempts.length ? Math.round(attempts.reduce((s, a) => s + a.score, 0) / attempts.length) : 0;
   res.status(200).json({
     success: true,
     data: {
@@ -513,10 +514,7 @@ exports.getCourseAnalytics = async (req, res) => {
     },
   });
 };
-
-// ─────────────────────────────────────────────────────────────
 // GET /api/quizzes/course/:courseId
-// ─────────────────────────────────────────────────────────────
 exports.getQuizzesByCourse = async (req, res) => {
   const quizzes = await Quiz.find({
     course: req.params.courseId,
@@ -526,21 +524,26 @@ exports.getQuizzesByCourse = async (req, res) => {
 };
 
 // ─────────────────────────────────────────────────────────────
-// POST /api/quizzes/:id/violation
+// POST /api/quizzes/:id/violation  (student, protected)
+// Appends a real-time violation event to an existing in-progress attempt.
+// Called during the quiz when a violation is detected, before final submission.
 // ─────────────────────────────────────────────────────────────
 exports.logViolation = async (req, res) => {
   const { type, message, timestamp } = req.body;
   if (!type) return res.status(400).json({ success: false, message: 'Violation type required' });
 
+  // Find the student's most recent (in-progress) attempt for this quiz
   const attempt = await QuizAttempt.findOne({
     quiz:    req.params.id,
     student: req.user._id,
   }).sort({ createdAt: -1 });
 
   if (!attempt) {
+    // No attempt yet (violation fired before submission) — log silently
     return res.status(200).json({ success: true, message: 'No attempt found, violation noted' });
   }
 
+  // Append the violation
   attempt.violations.push({ type, message, timestamp: timestamp ? new Date(timestamp) : new Date() });
   attempt.violationCount = attempt.violations.length;
   attempt.isFlagged      = true;

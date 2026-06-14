@@ -43,3 +43,5 @@ student_id,topic_id,quiz_score,time_spent_minutes,error_count,attempts
 2,105,80,1,0,4
 2,101,80,1,0,4
 2,102,80,1,0,4
+2,106,50,2,5,2
+2,107,55,1,4,1

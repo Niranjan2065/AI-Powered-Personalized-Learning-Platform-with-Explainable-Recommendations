@@ -45,12 +45,15 @@ export default function AIChatTutor({
   const [showChips, setShowChips] = useState(true);
   const bottomRef               = useRef(null);
 
-  // Build topic chips from quizStats
-  const topicChips = [
+  // Only show topic chips when student has real quiz data (total > 0)
+  const hasQuizHistory = (quizStats?.total ?? 0) > 0;
+
+  // Build topic chips from quizStats — only when real quiz history exists
+  const topicChips = hasQuizHistory ? [
     ...(quizStats?.weakTopics    || []).map(t => ({ ...t, ctx: 'weak'    })),
     ...(quizStats?.averageTopics || []).map(t => ({ ...t, ctx: 'average' })),
     ...(quizStats?.strongTopics  || []).map(t => ({ ...t, ctx: 'strong'  })),
-  ];
+  ] : [];
 
   // Auto-select weakest topic OR quiz title
   useEffect(() => {
@@ -123,7 +126,7 @@ export default function AIChatTutor({
       <button className="aic-fab" onClick={() => setOpen(true)} aria-label="Open AI Tutor">
         <span className="aic-fab-icon">🤖</span>
         <span className="aic-fab-text">Ask AI Tutor</span>
-        {quizStats?.weakTopics?.length > 0 && (
+        {quizStats?.weakTopics?.length > 0 && quizStats?.total > 0 && (
           <span className="aic-fab-badge">{quizStats.weakTopics.length} weak</span>
         )}
       </button>
@@ -193,12 +196,16 @@ export default function AIChatTutor({
             <div className="aic-empty-title">
               {score !== null && score < 70
                 ? `You scored ${Math.round(score)}% — want to know why?`
-                : 'Ask Aria about your performance'}
+                : hasQuizHistory
+                ? 'Ask Aria about your performance'
+                : 'Ask Aria anything about your courses'}
             </div>
             <div className="aic-empty-sub">
               {topicChips.length > 0
-                ? `${topicChips.filter(t => t.ctx === 'weak').length} weak topic(s) detected — tap a chip to ask about one`
-                : 'Tap a suggestion below or type your question'}
+                ? `${topicChips.filter(t => t.ctx === 'weak').length} weak topic(s) detected — tap one to ask about it`
+                : hasQuizHistory
+                ? 'Tap a suggestion below or type your question'
+                : 'Try: "What should I study first?" or "Explain a concept from my course"'}
             </div>
           </div>
         )}
