@@ -1,78 +1,106 @@
-// ============================================================
-// controllers/authController.js - Authentication Controller
-// ============================================================
-// Handles: Register, Login, Logout, Get Current User, Update Profile
+// controllers/authController.js
+const User             = require('../models/User');
+const TutorApplication = require('../models/TutorApplication');
 
-const User = require('../models/User');
-
-/**
- * Helper: Send token response with cookie
- */
+// ── Helper ────────────────────────────────────────────────────────────────────
 const sendTokenResponse = (user, statusCode, res, message = 'Success') => {
   const token = user.getSignedJwtToken();
-
-  const cookieOptions = {
-    expires: new Date(
-      Date.now() + parseInt(process.env.JWT_COOKIE_EXPIRE) * 24 * 60 * 60 * 1000
-    ),
-    httpOnly: true, // Prevent JS access to cookie
-    secure: process.env.NODE_ENV === 'production', // HTTPS only in prod
-    sameSite: 'strict',
-  };
-
-  res
-    .status(statusCode)
-    .cookie('token', token, cookieOptions)
+  res.status(statusCode)
+    .cookie('token', token, {
+      expires:  new Date(Date.now() + parseInt(process.env.JWT_COOKIE_EXPIRE || 7) * 24 * 60 * 60 * 1000),
+      httpOnly: true,
+      secure:   process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+    })
     .json({
       success: true,
       message,
       token,
       user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        avatar: user.avatar,
-        bio: user.bio,
-        learningLevel: user.learningLevel,
+        id:           user._id,
+        name:         user.name,
+        email:        user.email,
+        role:         user.role,
+        avatar:       user.avatar,
+        bio:          user.bio,
+        learningLevel:user.learningLevel,
+        tutorStatus:  user.tutorStatus ?? null,
       },
     });
 };
 
-// ============================================================
-// @desc    Register a new user
-// @route   POST /api/auth/register
-// @access  Public
-// ============================================================
+// ── POST /api/auth/register ───────────────────────────────────────────────────
 const register = async (req, res, next) => {
   try {
     const { name, email, password, role } = req.body;
 
-    // Prevent direct admin registration via API
     if (role === 'admin') {
-      return res.status(403).json({
-        success: false,
-        message: 'Admin accounts cannot be created via registration',
-      });
+      return res.status(403).json({ success: false, message: 'Admin accounts cannot be created via registration' });
     }
 
-    // Check if user already exists
-    const existingUser = await User.findOne({ email: email.toLowerCase() });
-    if (existingUser) {
-      return res.status(400).json({
-        success: false,
-        message: 'An account with this email already exists',
-      });
+    const existing = await User.findOne({ email: email.toLowerCase() });
+    if (existing) {
+      return res.status(400).json({ success: false, message: 'An account with this email already exists' });
     }
 
-    // Create user
+    const isTutor = role === 'tutor' || role === 'teacher';
+
+    // Tutors start as inactive pending accounts
     const user = await User.create({
-      name: name.trim(),
-      email: email.toLowerCase().trim(),
+      name:        name.trim(),
+      email:       email.toLowerCase().trim(),
       password,
-      role: role || 'student',
+      role:        isTutor ? 'tutor' : (role || 'student'),
+      isActive:    !isTutor,      // tutors blocked until approved
+      tutorStatus: isTutor ? 'pending' : null,
     });
 
+    // ── Tutor application ─────────────────────────────────────────────────────
+    if (isTutor) {
+      const {
+        highestQualification, yearsOfExperience, areaOfExpertise,
+        specificSkills, linkedinUrl, portfolioUrl, teachingStatement,
+      } = req.body;
+
+      // Resume uploaded via multer — req.file is set by the route middleware
+      const resumeUrl      = req.file?.path     || '';
+      const resumeFileName = req.file?.originalname || '';
+
+      const application = await TutorApplication.create({
+        user:                user._id,
+        highestQualification,
+        yearsOfExperience:   Number(yearsOfExperience),
+        areaOfExpertise,
+        specificSkills,
+        linkedinUrl:         linkedinUrl   || '',
+        portfolioUrl:        portfolioUrl  || '',
+        teachingStatement,
+        resumeUrl,
+        resumeFileName,
+      });
+
+      // Link application back to user
+      user.tutorApplication = application._id;
+      await user.save({ validateBeforeSave: false });
+
+      console.log(`📋 Tutor application submitted by ${user.email}`);
+
+      // Don't send a login token — tutor must wait for approval
+      return res.status(201).json({
+        success:          true,
+        pendingApproval:  true,
+        message:          'Application submitted! Our team will review it within 2-3 business days. You will receive an email once a decision is made.',
+        user: {
+          id:          user._id,
+          name:        user.name,
+          email:       user.email,
+          role:        user.role,
+          tutorStatus: user.tutorStatus,
+        },
+      });
+    }
+
+    // Student — send token immediately
     console.log(`✅ New ${user.role} registered: ${user.email}`);
     sendTokenResponse(user, 201, res, 'Registration successful! Welcome aboard.');
 
@@ -81,50 +109,44 @@ const register = async (req, res, next) => {
   }
 };
 
-// ============================================================
-// @desc    Login user
-// @route   POST /api/auth/login
-// @access  Public
-// ============================================================
+// ── POST /api/auth/login ──────────────────────────────────────────────────────
 const login = async (req, res, next) => {
   try {
     const { email, password } = req.body;
-
     if (!email || !password) {
-      return res.status(400).json({
-        success: false,
-        message: 'Please provide email and password',
-      });
+      return res.status(400).json({ success: false, message: 'Please provide email and password' });
     }
 
-    // Find user and explicitly select password (hidden by default)
     const user = await User.findOne({ email: email.toLowerCase() }).select('+password');
-
     if (!user) {
-      return res.status(401).json({
-        success: false,
-        message: 'Invalid email or password',
+      return res.status(401).json({ success: false, message: 'Invalid email or password' });
+    }
+
+    // ── Tutor pending / rejected gate ────────────────────────────────────────
+    if (user.role === 'tutor' && user.tutorStatus === 'pending') {
+      return res.status(403).json({
+        success:         false,
+        pendingApproval: true,
+        message:         'Your tutor application is under review. You will be notified by email once approved.',
+      });
+    }
+    if (user.role === 'tutor' && user.tutorStatus === 'rejected') {
+      return res.status(403).json({
+        success:  false,
+        rejected: true,
+        message:  'Your tutor application was not approved. Please check your email for feedback.',
       });
     }
 
-    // Check if account is active
     if (!user.isActive) {
-      return res.status(401).json({
-        success: false,
-        message: 'Your account has been deactivated. Contact support.',
-      });
+      return res.status(401).json({ success: false, message: 'Your account has been deactivated. Contact support.' });
     }
 
-    // Compare password
     const isMatch = await user.matchPassword(password);
     if (!isMatch) {
-      return res.status(401).json({
-        success: false,
-        message: 'Invalid email or password',
-      });
+      return res.status(401).json({ success: false, message: 'Invalid email or password' });
     }
 
-    // Update last login timestamp
     user.lastLogin = new Date();
     await user.save({ validateBeforeSave: false });
 
@@ -136,122 +158,54 @@ const login = async (req, res, next) => {
   }
 };
 
-// ============================================================
-// @desc    Logout user (clear cookie)
-// @route   POST /api/auth/logout
-// @access  Private
-// ============================================================
+// ── POST /api/auth/logout ─────────────────────────────────────────────────────
 const logout = async (req, res, next) => {
   try {
-    res.cookie('token', 'none', {
-      expires: new Date(Date.now() + 10 * 1000), // expires in 10 seconds
-      httpOnly: true,
-    });
-
-    res.status(200).json({
-      success: true,
-      message: 'Logged out successfully',
-    });
-  } catch (error) {
-    next(error);
-  }
+    res.cookie('token', 'none', { expires: new Date(Date.now() + 10000), httpOnly: true });
+    res.status(200).json({ success: true, message: 'Logged out successfully' });
+  } catch (error) { next(error); }
 };
 
-// ============================================================
-// @desc    Get current logged-in user
-// @route   GET /api/auth/me
-// @access  Private
-// ============================================================
+// ── GET /api/auth/me ──────────────────────────────────────────────────────────
 const getMe = async (req, res, next) => {
   try {
-    // req.user is set by protect middleware
     const user = await User.findById(req.user._id)
       .populate('enrolledCourses', 'title thumbnail category level')
-      .populate('createdCourses', 'title thumbnail enrollmentCount isPublished');
-
-    res.status(200).json({
-      success: true,
-      data: user,
-    });
-  } catch (error) {
-    next(error);
-  }
+      .populate('createdCourses',  'title thumbnail enrollmentCount isPublished')
+      .populate('tutorApplication');
+    res.status(200).json({ success: true, data: user });
+  } catch (error) { next(error); }
 };
 
-// ============================================================
-// @desc    Update user profile
-// @route   PUT /api/auth/update-profile
-// @access  Private
-// ============================================================
+// ── PUT /api/auth/update-profile ──────────────────────────────────────────────
 const updateProfile = async (req, res, next) => {
   try {
-    const allowedFields = ['name', 'bio', 'expertise', 'avatar'];
+    const allowed    = ['name', 'bio', 'expertise', 'avatar'];
     const updateData = {};
-
-    allowedFields.forEach((field) => {
-      if (req.body[field] !== undefined) {
-        updateData[field] = req.body[field];
-      }
-    });
-
-    const user = await User.findByIdAndUpdate(
-      req.user._id,
-      { $set: updateData },
-      { new: true, runValidators: true }
-    );
-
-    res.status(200).json({
-      success: true,
-      message: 'Profile updated successfully',
-      data: user,
-    });
-  } catch (error) {
-    next(error);
-  }
+    allowed.forEach(f => { if (req.body[f] !== undefined) updateData[f] = req.body[f]; });
+    const user = await User.findByIdAndUpdate(req.user._id, { $set: updateData }, { new: true, runValidators: true });
+    res.status(200).json({ success: true, message: 'Profile updated successfully', data: user });
+  } catch (error) { next(error); }
 };
 
-// ============================================================
-// @desc    Change password
-// @route   PUT /api/auth/change-password
-// @access  Private
-// ============================================================
+// ── PUT /api/auth/change-password ─────────────────────────────────────────────
 const changePassword = async (req, res, next) => {
   try {
     const { currentPassword, newPassword } = req.body;
-
     if (!currentPassword || !newPassword) {
-      return res.status(400).json({
-        success: false,
-        message: 'Please provide current and new password',
-      });
+      return res.status(400).json({ success: false, message: 'Please provide current and new password' });
     }
-
-    // Get user with password
     const user = await User.findById(req.user._id).select('+password');
-
-    // Check current password
-    const isMatch = await user.matchPassword(currentPassword);
-    if (!isMatch) {
-      return res.status(401).json({
-        success: false,
-        message: 'Current password is incorrect',
-      });
+    if (!await user.matchPassword(currentPassword)) {
+      return res.status(401).json({ success: false, message: 'Current password is incorrect' });
     }
-
     if (newPassword.length < 6) {
-      return res.status(400).json({
-        success: false,
-        message: 'New password must be at least 6 characters',
-      });
+      return res.status(400).json({ success: false, message: 'New password must be at least 6 characters' });
     }
-
     user.password = newPassword;
     await user.save();
-
     sendTokenResponse(user, 200, res, 'Password changed successfully');
-  } catch (error) {
-    next(error);
-  }
+  } catch (error) { next(error); }
 };
 
 module.exports = { register, login, logout, getMe, updateProfile, changePassword };
