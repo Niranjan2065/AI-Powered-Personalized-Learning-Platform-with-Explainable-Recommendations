@@ -1,8 +1,10 @@
 // controllers/adminController.js — Fixed to use QuizAttempt instead of Result
-const User         = require('../models/User');
-const Course       = require('../models/Course');
-const Enrollment   = require('../models/Enrollment');
-const QuizAttempt  = require('../models/QuizAttempt');
+// Phase 4 update: getAllUsers now populates tutorApplication so the admin
+// dashboard can show the "📋 Application" button only when one exists.
+const User           = require('../models/User');
+const Course         = require('../models/Course');
+const Enrollment     = require('../models/Enrollment');
+const QuizAttempt    = require('../models/QuizAttempt');
 const Recommendation = require('../models/Recommendation');
 
 const TUTOR_ROLES = { $in: ['tutor', 'teacher'] };
@@ -29,7 +31,8 @@ const getPlatformStats = async (req, res, next) => {
     const avgScoreAgg = await QuizAttempt.aggregate([
       { $group: { _id: null, avgScore: { $avg: '$score' } } },
     ]);
-    const avgScore = avgScoreAgg[0]?.avgScore ? Math.round(avgScoreAgg[0].avgScore) : 0;
+    const avgScore = avgScoreAgg[0]?.avgScore
+      ? Math.round(avgScoreAgg[0].avgScore) : 0;
 
     res.status(200).json({
       success: true,
@@ -61,7 +64,16 @@ const getAllUsers = async (req, res, next) => {
 
     const skip = (parseInt(page) - 1) * parseInt(limit);
     const [users, total] = await Promise.all([
-      User.find(query).sort({ createdAt: -1 }).skip(skip).limit(parseInt(limit)).select('-password'),
+      User.find(query)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(parseInt(limit))
+        .select('-password')
+        // ── FIX: populate tutorApplication so the dashboard can show the
+        //    "📋 Application" button only when a document actually exists.
+        //    Tutors registered before this feature will have null here,
+        //    and the button will be hidden automatically.
+        .populate('tutorApplication', '_id status areaOfExpertise'),
       User.countDocuments(query),
     ]);
 
@@ -74,10 +86,16 @@ const toggleUserStatus = async (req, res, next) => {
   try {
     const user = await User.findById(req.params.id);
     if (!user) return res.status(404).json({ success: false, message: 'User not found' });
-    if (user.role === 'admin') return res.status(400).json({ success: false, message: 'Cannot deactivate admin' });
+    if (user.role === 'admin') {
+      return res.status(400).json({ success: false, message: 'Cannot deactivate admin' });
+    }
     user.isActive = !user.isActive;
     await user.save();
-    res.status(200).json({ success: true, message: `User ${user.isActive ? 'activated' : 'deactivated'}`, data: { isActive: user.isActive } });
+    res.status(200).json({
+      success: true,
+      message: `User ${user.isActive ? 'activated' : 'deactivated'}`,
+      data:    { isActive: user.isActive },
+    });
   } catch (error) { next(error); }
 };
 
@@ -100,7 +118,10 @@ const getPerformanceOverview = async (req, res, next) => {
       { $limit: 10 },
       { $lookup: { from: 'users', localField: '_id', foreignField: '_id', as: 'student' } },
       { $unwind: '$student' },
-      { $project: { 'student.name': 1, 'student.email': 1, avgScore: { $round: ['$avgScore', 1] }, quizzesTaken: 1 } },
+      { $project: {
+        'student.name': 1, 'student.email': 1,
+        avgScore: { $round: ['$avgScore', 1] }, quizzesTaken: 1,
+      }},
     ]);
 
     const popularCourses = await Enrollment.aggregate([
@@ -112,7 +133,6 @@ const getPerformanceOverview = async (req, res, next) => {
       { $project: { 'course.title': 1, 'course.category': 1, count: 1 } },
     ]);
 
-    // Recent activity
     const recentAttempts = await QuizAttempt.find()
       .populate('student', 'name')
       .populate('quiz', 'title')
@@ -127,4 +147,10 @@ const getPerformanceOverview = async (req, res, next) => {
   } catch (error) { next(error); }
 };
 
-module.exports = { getPlatformStats, getAllUsers, toggleUserStatus, getAllCourses, getPerformanceOverview };
+module.exports = {
+  getPlatformStats,
+  getAllUsers,
+  toggleUserStatus,
+  getAllCourses,
+  getPerformanceOverview,
+};
