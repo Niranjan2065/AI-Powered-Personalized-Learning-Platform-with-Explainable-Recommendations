@@ -12,6 +12,7 @@ import { Link } from "react-router-dom";
 import { toast } from "react-toastify";
 import Navbar from "../components/common/Navbar";
 import AIChatTutor from "../components/student/AIChatTutor";
+import WeakTopicsPanel from "../components/student/WeakTopicsPanel";
 import { useAuth } from "../context/AuthContext";
 import axios from "axios";
 import {
@@ -321,17 +322,10 @@ export default function StudentDashboard() {
               )}
 
               {/* Topic Lists */}
-              {quizStats?.weakTopics?.length > 0 && (
-                <div className="card" style={{ padding: "1.1rem", borderLeft: "3px solid var(--danger)", marginBottom: "1rem" }}>
-                  <h3 style={{ fontSize: ".9rem", color: "var(--danger)", marginBottom: ".75rem" }}>🔴 Needs Work</h3>
-                  {quizStats.weakTopics.slice(0, 4).map(({ topic, percentage }) => (
-                    <div key={topic} style={{ display: "flex", justifyContent: "space-between", fontSize: ".8rem", marginBottom: ".3rem" }}>
-                      <span style={{ textTransform: "capitalize" }}>{topic}</span>
-                      <span style={{ fontWeight: 700, color: "var(--danger)" }}>{percentage}%</span>
-                    </div>
-                  ))}
-                </div>
-              )}
+            <WeakTopicsPanel
+  studentId={user?._id}
+  weakTopics={quizStats?.weakTopics?.map((t) => t.topic) || []}
+/>
 
               {quizStats?.strongTopics?.length > 0 && (
                 <div className="card" style={{ padding: "1.1rem", borderLeft: "3px solid var(--secondary)", marginBottom: "1rem" }}>
