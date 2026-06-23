@@ -15,6 +15,7 @@ import {
 import Navbar from '../components/shared/Navbar';
 import { useAuth } from '../context/AuthContext';
 import axios from 'axios';
+import FeedbackButtons from '../components/recommendations/FeedbackButtons';
 
 const api = axios.create({ baseURL: '/api' });
 api.interceptors.request.use(c => {
@@ -436,6 +437,8 @@ export default function RecommendationsPage() {
   const [generating,  setGenerating]      = useState(false);
   const [noData,      setNoData]          = useState(false);
   const [expandShap,  setExpandShap]      = useState({});
+  // Step 4: feedback signal map — { itemId: signal } — restored from API on load
+  const [feedbackMap, setFeedbackMap]     = useState({});
   // Step 2
   const [reviewDue,   setReviewDue]       = useState(null);
   const [hideBanner,  setHideBanner]      = useState(false);
@@ -444,29 +447,36 @@ export default function RecommendationsPage() {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [recRes, anRes, revRes] = await Promise.allSettled([
+      const [recRes, anRes, revRes, fbRes] = await Promise.allSettled([
         api.get('/recommendations/my'),
         api.get('/recommendations/analysis'),
         api.get('/recommendations/review-due'),   // Step 2
+        api.get('/recommendations/feedback/my'),   // Step 4: restore signals
       ]);
 
       if (recRes.status === 'fulfilled') {
         const d   = recRes.value.data;
-        const raw = d.data;
-        let recsArr = [];
-        if (Array.isArray(raw))                       recsArr = raw;
-        else if (Array.isArray(raw?.recommendations)) recsArr = raw.recommendations;
-        else if (Array.isArray(raw?.items))           recsArr = raw.items;
-        setRecs(recsArr);
-        if (!raw) setNoData(true);
-        if (raw?.generatedBy)              setEngine(raw.generatedBy);
-        if (raw?.analysisSummary?.shapExplanation) {
-          setMlInsights({
-            cluster:           raw.analysisSummary.mlCluster,
-            shapContributions: raw.analysisSummary.shapExplanation?.shap_contributions,
-            humanReadable:     raw.analysisSummary.shapExplanation?.human_readable,
-            weakTopicNote:     raw.analysisSummary.shapExplanation?.weak_topic_note,
-          });
+        const raw = d?.data;
+        if (raw) {
+          let recsArr = [];
+          const parentRecId = raw?._id || '';
+          if (Array.isArray(raw))                       recsArr = raw;
+          else if (Array.isArray(raw?.recommendations)) recsArr = raw.recommendations;
+          else if (Array.isArray(raw?.items))           recsArr = raw.items;
+          recsArr = recsArr.map(r => ({ ...r, __recId: parentRecId }));
+          setRecs(recsArr);
+          if (!raw) setNoData(true);
+          if (raw?.generatedBy)              setEngine(raw.generatedBy);
+          if (raw?.analysisSummary?.shapExplanation) {
+            setMlInsights({
+              cluster:           raw.analysisSummary.mlCluster,
+              shapContributions: raw.analysisSummary.shapExplanation?.shap_contributions,
+              humanReadable:     raw.analysisSummary.shapExplanation?.human_readable,
+              weakTopicNote:     raw.analysisSummary.shapExplanation?.weak_topic_note,
+            });
+          }
+        } else {
+          setNoData(true);
         }
       }
 
@@ -485,6 +495,12 @@ export default function RecommendationsPage() {
         setReviewDue(revRes.value.data?.data || null);
         setHideBanner(false);
       }
+      // Step 4: restore existing feedback signals into map { itemId: signal }
+      if (fbRes.status === 'fulfilled') {
+        const map = {};
+        (fbRes.value.data?.data || []).forEach(f => { map[f.itemId] = f.signal; });
+        setFeedbackMap(map);
+      }
     } catch {
       toast.error('Failed to load recommendations');
     }
@@ -497,7 +513,7 @@ export default function RecommendationsPage() {
   useEffect(() => {
     const interval = setInterval(async () => {
       try {
-        const [recRes, anRes, revRes] = await Promise.allSettled([
+        const [recRes, anRes, revRes, fbRes] = await Promise.allSettled([
           api.get('/recommendations/my'),
           api.get('/recommendations/analysis'),
           api.get('/recommendations/review-due'),
@@ -989,6 +1005,18 @@ export default function RecommendationsPage() {
                             }
                           </div>
                         </div>
+
+                        {/* Step 4: Feedback buttons — shown below each card */}
+                        {!rec.isDismissed && recs[0]?._id && (
+                          <div style={{ borderTop:'1px solid var(--border)', paddingTop:'.75rem', marginTop:'.75rem' }}>
+                            <FeedbackButtons
+                              recId={rec.__recId || ''}
+                              itemId={rec._id}
+                              topic={rec.addressesTopic || 'general'}
+                              initialSignal={feedbackMap[rec._id] || null}
+                            />
+                          </div>
+                        )}
                       </div>
                     );
                   })}

@@ -224,12 +224,76 @@ function _fallbackNextLesson(attempts, catalogue) {
   };
 }
 
+// (exports moved to bottom — see applyFeedbackWeights section)
+
+
 // ---------------------------------------------------------------------------
-// Exports
+// Feedback-weighted confidence
 // ---------------------------------------------------------------------------
+// Called by recommendationController after building items to adjust confidence
+// scores based on stored student feedback signals.
+//
+// feedbackSummary shape (from feedbackController.getFeedbackSummary):
+//   { topic: { weight: 0.3–1.7, thumbs_up, thumbs_down, ... } }
+//
+// Rules:
+//   weight > 1.0 → student liked content on this topic → boost confidence
+//   weight < 1.0 → student disliked / already knew → suppress confidence
+//   'already_know' signal → move item to bottom (priority 1) so new content surfaces
+//   'too_hard' signal    → lower confidence significantly
+//
+// Returns a new items array — does not mutate input.
+function applyFeedbackWeights(items, feedbackSummary) {
+  if (!feedbackSummary || Object.keys(feedbackSummary).length === 0) return items;
+
+  return items.map(item => {
+    const topic   = item.addressesTopic || 'general';
+    const fb      = feedbackSummary[topic];
+    if (!fb) return item;
+
+    let confidence = item.confidence ?? 70;
+    let priority   = item.priority   ?? 5;
+
+    // Apply Bayesian weight to confidence
+    confidence = Math.round(Math.min(99, Math.max(10, confidence * fb.weight)));
+
+    // already_know: student has mastered this — push to bottom
+    if (fb.already_know > 0 && fb.thumbs_up === 0) {
+      priority   = 1;
+      confidence = Math.max(10, confidence - 20);
+    }
+
+    // too_hard: student struggled — keep visible but flag it
+    if (fb.too_hard > 0 && fb.thumbs_down === 0) {
+      confidence = Math.max(10, confidence - 10);
+    }
+
+    return { ...item, confidence, priority };
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Difficulty progression
+// ---------------------------------------------------------------------------
+// Once a topic score crosses thresholds, shift recommendation type upward.
+// Called by recommendationController when building items.
+//
+//  score < 50  → remedial   (fundamentals)
+//  50–74       → standard   (normal lesson)
+//  75–89       → intermediate challenge
+//  90+         → advanced / skip topic entirely
+function getProgressionLevel(topicScore) {
+  if (topicScore >= 90) return 'advanced';
+  if (topicScore >= 75) return 'intermediate';
+  if (topicScore >= 50) return 'standard';
+  return 'remedial';
+}
+
 module.exports = {
   resolveScore,
   aggregateTopicPerformance,
   buildRecommendations,
+  applyFeedbackWeights,
+  getProgressionLevel,
   MIN_QUIZ_DATA_POINTS,
 };
