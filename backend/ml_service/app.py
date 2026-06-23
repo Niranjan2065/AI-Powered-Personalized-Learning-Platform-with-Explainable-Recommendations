@@ -4,51 +4,66 @@ ml_service/app.py
 Standalone Flask microservice that exposes the Python ML/XAI engine
 over HTTP so Node.js can call it.
 
-Endpoints:
-  GET  /api/health                          — liveness check
-  POST /ml/train                            — (re)train models from CSV
-  GET  /api/recommendations/<student_id>    — recommend + SHAP
-  GET  /api/recommendations/<student_id>/lime — LIME explanation only
+Endpoints (original):
+  GET  /api/health
+  POST /ml/train
+  GET  /api/recommendations/<student_id>
+  GET  /api/recommendations/<student_id>/lime
 
-Run from the project ROOT (not from inside backend/ml_service):
+Endpoints (new — resource recommendations):
+  GET  /api/students/<student_id>/recommendations
+  GET  /api/students/<student_id>/progress
+  POST /api/students/<student_id>/resource-feedback
+  GET  /api/topics/<topic_id>/resources
+
+Run from the project ROOT:
   python backend/ml_service/app.py
-
-OR set PYTHONPATH manually:
-  cd backend/ml_service
-  set PYTHONPATH=../../       (Windows)
-  export PYTHONPATH=../../    (Mac/Linux)
-  python app.py
 ─────────────────────────────────────────────────────────────────────────────
 """
 
 import sys
 import os
+from datetime import datetime, timezone
+from typing import Optional
 
-# ── Path setup ────────────────────────────────────────────────────────────────
-# File is at:  <project_root>/backend/ml_service/app.py
-# ai_engine is at: <project_root>/ai_engine/
+# ── Path setup  ───────────────────────────────────────────────────────────────
+# IMPORTANT: path setup MUST come before any ai_engine or db_stub imports.
 #
-# So we need to go UP three levels from this file:
-#   __file__                     → .../backend/ml_service/app.py
-#   dirname(__file__)            → .../backend/ml_service
-#   dirname(dirname(__file__))   → .../backend
-#   dirname(dirname(dirname(__file__))) → <project_root>  ✅
+#   __file__                            → .../backend/ml_service/app.py
+#   dirname(__file__)                   → .../backend/ml_service
+#   dirname(dirname(__file__))          → .../backend
+#   dirname(dirname(dirname(__file__))) → <project_root>   ← ai_engine lives here
 
 THIS_FILE    = os.path.abspath(__file__)
-ML_DIR       = os.path.dirname(THIS_FILE)          # backend/ml_service
-BACKEND_DIR  = os.path.dirname(ML_DIR)             # backend
-PROJECT_ROOT = os.path.dirname(BACKEND_DIR)         # project root  ← ai_engine lives here
+ML_DIR       = os.path.dirname(THIS_FILE)
+BACKEND_DIR  = os.path.dirname(ML_DIR)
+PROJECT_ROOT = os.path.dirname(BACKEND_DIR)
 
-# Insert project root so Python can find ai_engine package
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
-print(f"[ML Service] PROJECT_ROOT = {PROJECT_ROOT}")
-print(f"[ML Service] ai_engine path = {os.path.join(PROJECT_ROOT, 'ai_engine')}")
-print(f"[ML Service] ai_engine exists = {os.path.isdir(os.path.join(PROJECT_ROOT, 'ai_engine'))}")
+# Also add ml_service dir so db_stub.py (sitting next to this file) is importable
+if ML_DIR not in sys.path:
+    sys.path.insert(0, ML_DIR)
+
+print(f"[ML Service] PROJECT_ROOT      = {PROJECT_ROOT}")
+print(f"[ML Service] ai_engine exists  = {os.path.isdir(os.path.join(PROJECT_ROOT, 'ai_engine'))}")
+print(f"[ML Service] db_stub.py exists = {os.path.isfile(os.path.join(ML_DIR, 'db_stub.py'))}")
+
+# ── Imports (after path setup) ────────────────────────────────────────────────
 
 from flask import Flask, jsonify, request
 from flask_cors import CORS
+
+from db_stub import (
+    get_student_weaknesses,
+    get_topic_resources,
+    get_student_progress,
+    save_resource_feedback,
+)
+from ai_engine.src.generate_reason import generate_xai_reason
+
+# ── App setup ─────────────────────────────────────────────────────────────────
 
 app = Flask(__name__)
 CORS(app)
@@ -72,19 +87,74 @@ def _import_pipeline():
     return preprocess, train_and_save
 
 
-# ── Health ────────────────────────────────────────────────────────────────────
+# ── Helper functions for resource recommendation ──────────────────────────────
+
+LEARNING_STYLE_PRIORITY = {
+    "visual":   ["video", "article", "practice"],
+    "reading":  ["article", "video", "practice"],
+    "practice": ["practice", "article", "video"],
+    "default":  ["video", "article", "practice"],
+}
+MAX_RESOURCES_PER_TYPE = 2
+
+
+def _rank_resources(resources, learning_style, max_total=5):
+    """Sort resources by learning-style preference, then quality score."""
+    priority = LEARNING_STYLE_PRIORITY.get(learning_style, LEARNING_STYLE_PRIORITY["default"])
+    type_rank = {rtype: idx for idx, rtype in enumerate(priority)}
+
+    ranked = sorted(
+        resources,
+        key=lambda r: (type_rank.get(r.get("type", ""), 99), -r.get("quality_score", 0)),
+    )
+
+    counts = {}
+    result = []
+    for r in ranked:
+        rtype = r.get("type", "other")
+        if counts.get(rtype, 0) < MAX_RESOURCES_PER_TYPE:
+            result.append(r)
+            counts[rtype] = counts.get(rtype, 0) + 1
+        if len(result) >= max_total:
+            break
+    return result
+
+
+def _build_recommendation(weakness, learning_style):
+    """Combine a weakness record + its resources into one recommendation object."""
+    resources = get_topic_resources(weakness["topic_id"])
+    ranked    = _rank_resources(resources, learning_style)
+
+    xai_reason = generate_xai_reason(
+        topic_name=weakness["topic_name"],
+        quiz_scores=weakness.get("quiz_scores", []),
+        shap_values=weakness.get("shap_values", {}),
+        prerequisite_weakness=weakness.get("prerequisite_weakness"),
+    )
+
+    return {
+        "topic_id":    weakness["topic_id"],
+        "topic_name":  weakness["topic_name"],
+        "avg_score":   round(weakness.get("avg_score", 0)),
+        "xai_reason":  xai_reason,
+        "resources":   ranked,
+        "detected_at": weakness.get("detected_at", ""),
+    }
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# ORIGINAL ROUTES (unchanged)
+# ═════════════════════════════════════════════════════════════════════════════
 
 @app.route('/api/health', methods=['GET'])
 def health():
     return jsonify({
-        'status':       'ok',
-        'service':      'ml-microservice',
-        'project_root': PROJECT_ROOT,
+        'status':          'ok',
+        'service':         'ml-microservice',
+        'project_root':    PROJECT_ROOT,
         'ai_engine_found': os.path.isdir(os.path.join(PROJECT_ROOT, 'ai_engine')),
     }), 200
 
-
-# ── Training ──────────────────────────────────────────────────────────────────
 
 @app.route('/ml/train', methods=['POST'])
 def train():
@@ -103,8 +173,6 @@ def train():
         return jsonify({'error': str(e)}), 500
 
 
-# ── Recommendations ───────────────────────────────────────────────────────────
-
 @app.route('/api/recommendations/<int:student_id>', methods=['GET'])
 def recommendations(student_id):
     top_n = request.args.get('top_n', 5, type=int)
@@ -121,11 +189,11 @@ def recommendations(student_id):
         weak_reason = generate_weak_topic_reason(rec['weak_topics'])
 
         return jsonify({
-            'student_id':          student_id,
-            'cluster':             rec['cluster'],
-            'recommended_topics':  rec['recommended_topics'],
-            'weak_topics':         rec['weak_topics'],
-            'student_features':    rec['student_features'],
+            'student_id':         student_id,
+            'cluster':            rec['cluster'],
+            'recommended_topics': rec['recommended_topics'],
+            'weak_topics':        rec['weak_topics'],
+            'student_features':   rec['student_features'],
             'explanation': {
                 'human_readable':     reason,
                 'weak_topic_note':    weak_reason,
@@ -151,9 +219,109 @@ def lime_explanation(student_id):
         return jsonify({'error': str(e)}), 500
 
 
+# ═════════════════════════════════════════════════════════════════════════════
+# NEW ROUTES — personalised resource recommendations
+# ═════════════════════════════════════════════════════════════════════════════
+
+@app.route('/api/students/<student_id>/recommendations', methods=['GET'])
+def student_recommendations(student_id):
+    """
+    GET /api/students/<student_id>/recommendations?limit=5
+    Returns weak topics + xai_reason + ranked resource links.
+    Called by WeakTopicsPanel.jsx on the frontend.
+    """
+    limit = min(int(request.args.get('limit', 5)), 10)
+
+    student_data = get_student_weaknesses(student_id)
+    if student_data is None:
+        return jsonify({'error': f"Student '{student_id}' not found."}), 404
+
+    learning_style = student_data.get('learning_style', 'default')
+    weaknesses     = student_data.get('weaknesses', [])
+
+    # Worst topics first
+    weaknesses = sorted(weaknesses, key=lambda w: w.get('avg_score', 100))[:limit]
+
+    recommendations = [_build_recommendation(w, learning_style) for w in weaknesses]
+
+    return jsonify({
+        'student_id':      student_id,
+        'learning_style':  learning_style,
+        'recommendations': recommendations,
+        'generated_at':    datetime.now(timezone.utc).isoformat(),
+    }), 200
+
+
+@app.route('/api/students/<student_id>/progress', methods=['GET'])
+def student_progress(student_id):
+    """
+    GET /api/students/<student_id>/progress
+    Returns per-topic scores for the progress bars on the dashboard.
+    """
+    progress = get_student_progress(student_id)
+    if progress is None:
+        return jsonify({'error': f"Student '{student_id}' not found."}), 404
+
+    return jsonify({
+        'student_id': student_id,
+        'topics': [
+            {
+                'topic_id':   t['topic_id'],
+                'topic_name': t['topic_name'],
+                'avg_score':  round(t['avg_score']),
+                'is_weak':    t['avg_score'] < 50,
+            }
+            for t in progress
+        ],
+    }), 200
+
+
+@app.route('/api/students/<student_id>/resource-feedback', methods=['POST'])
+def resource_feedback(student_id):
+    """
+    POST /api/students/<student_id>/resource-feedback
+    Body: { "resource_id": "...", "helpful": true, "time_spent_sec": 240 }
+    Records whether a student found a resource helpful.
+    """
+    body = request.get_json(silent=True)
+    if not body:
+        return jsonify({'error': 'Request body must be JSON.'}), 400
+
+    resource_id = body.get('resource_id')
+    helpful     = body.get('helpful')
+    time_spent  = body.get('time_spent_sec', 0)
+
+    if resource_id is None or helpful is None:
+        return jsonify({'error': "'resource_id' and 'helpful' are required."}), 400
+
+    save_resource_feedback(
+        student_id=student_id,
+        resource_id=resource_id,
+        helpful=bool(helpful),
+        time_spent_sec=int(time_spent),
+    )
+    return jsonify({'status': 'ok', 'message': 'Feedback recorded.'}), 201
+
+
+@app.route('/api/topics/<topic_id>/resources', methods=['GET'])
+def topic_resources(topic_id):
+    """
+    GET /api/topics/<topic_id>/resources?type=video
+    Returns curated resources for a topic, optionally filtered by type.
+    """
+    rtype_filter = request.args.get('type')
+    resources    = get_topic_resources(topic_id)
+
+    if rtype_filter:
+        resources = [r for r in resources if r.get('type') == rtype_filter]
+
+    return jsonify({'topic_id': topic_id, 'resources': resources}), 200
+
+
 # ── Entry point ───────────────────────────────────────────────────────────────
 
 if __name__ == '__main__':
-    port = int(os.environ.get('ML_PORT', 5001))
+    port  = int(os.environ.get('ML_PORT', 5001))
+    debug = os.environ.get('FLASK_ENV', 'development') == 'development'
     print(f'[ML Service] Starting on http://localhost:{port}')
-    app.run(debug=True, port=port)
+    app.run(host='0.0.0.0', port=port, debug=debug)

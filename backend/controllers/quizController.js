@@ -33,6 +33,13 @@ async function getLessonContent(lessonId) {
 // ─────────────────────────────────────────────────────────────
 // Helpers
 // ─────────────────────────────────────────────────────────────
+const normalizeAnswer = (str) =>
+  String(str || '')
+    .toLowerCase()
+    .replace(/[.,\/#!$%\^&\*;:{}=\-_`~()?]/g, "") // remove punctuation
+    .replace(/\s+/g, " ") // normalize spacing
+    .trim();
+
 function scoreAttempt(quiz, answers) {
   let earned = 0;
   const total = quiz.questions.reduce((s, q) => s + (q.points || 1), 0);
@@ -46,10 +53,13 @@ function scoreAttempt(quiz, answers) {
     if (q.type === 'mcq') {
       const correct = q.options.find(o => o.isCorrect)?.text || '';
       isCorrect = submitted?.selectedOption?.trim().toLowerCase() === correct.toLowerCase();
-    } else {
+    } else if (q.type === 'true_false') {
       isCorrect =
         submitted?.selectedAnswer?.trim().toLowerCase() ===
         (q.correctAnswer || '').trim().toLowerCase();
+    } else {
+      // short_answer typo-resilient match
+      isCorrect = normalizeAnswer(submitted?.selectedAnswer) === normalizeAnswer(q.correctAnswer);
     }
 
     const pts = isCorrect ? (q.points || 1) : 0;
@@ -103,8 +113,8 @@ exports.generateQuiz = async (req, res) => {
     const isPdf   = !!contentObj.pdfUrl;
 
     let hint = 'Add text content to this lesson before generating questions.';
-    if (isVideo) hint = 'This is a video lesson. Switch to "Upload a PDF" in the AI panel to generate questions from a PDF instead.';
-    if (isPdf)   hint = 'This is a PDF lesson. Switch to "Upload a PDF" in the AI panel and upload the PDF file directly.';
+    if (isVideo) hint = 'This is a video lesson. Switch to "Upload PDF" in the Content tab/step to generate questions from a PDF instead.';
+    if (isPdf)   hint = 'This is a PDF lesson. Switch to "Upload PDF" in the Content tab/step and upload the PDF file directly.';
 
     return res.status(400).json({
       success: false,
@@ -206,7 +216,7 @@ exports.saveGeneratedQuiz = async (req, res) => {
     title: title || 'AI-Generated Quiz', questions,
     timeLimit, passingScore, shuffleQuestions, shuffleOptions, maxAttempts,
     isAIGenerated: true,
-    aiModel:       aiMeta.model || 'claude-sonnet-4-20250514',
+    aiModel:       aiMeta.model || 'llama-3.3-70b-versatile',
     aiGeneratedAt: new Date(),
     aiSourceType:  aiMeta.sourceType || 'lesson_text',
     aiPromptConfig: {

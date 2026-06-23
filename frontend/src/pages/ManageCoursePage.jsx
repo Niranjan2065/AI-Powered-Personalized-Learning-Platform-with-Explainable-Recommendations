@@ -5,6 +5,7 @@ import { toast } from 'react-toastify';
 import Navbar from '../components/common/Navbar';
 import { Spinner } from '../components/common/StatCard';
 import { getCourse, createModule, createLesson } from '../utils/api';
+import AIQuizGenerator from '../components/quiz/AIQuizGenerator';
 import axios from 'axios';
 
 const authApi = axios.create({ baseURL: '/api' });
@@ -51,163 +52,7 @@ export default function ManageCoursePage() {
   const [lessonSaving, setLessonSaving] = useState(false);
 
   const [quizzesByModule, setQuizzesByModule] = useState({});
-
-  const [aiState,   setAiState]   = useState({});
-  const [quizTitle, setQuizTitle] = useState({});
-  const [saving,    setSaving]    = useState({});
-  const fileRefs = useRef({});
-
-  const getAI = (mid) => aiState[mid] || {
-    open: false, source: 'lesson', pdfFile: null,
-    numQ: 5, difficulty: 'medium',
-    types: ['mcq', 'true_false'], focusArea: '',
-    step: 'idle', genLabel: GEN_STEPS[0], genPct: 0,
-    error: '', preview: [],
-    lessonId: null, courseId: null,   // ✅ always initialised
-  };
-  const setAI = (mid, patch) =>
-    setAiState(p => ({ ...p, [mid]: { ...getAI(mid), ...(typeof patch === 'function' ? patch(getAI(mid)) : patch) } }));
-
-  const toggleAiType = (mid, t) => {
-    const cur = getAI(mid).types;
-    setAI(mid, { types: cur.includes(t) ? cur.filter(x => x !== t) : [...cur, t] });
-  };
-
-  // ── AI generation ──────────────────────────────────────────
-  const runAiGenerate = async (mid) => {
-    const ai  = getAI(mid);
-    const mod = modules.find(m => m._id === mid);
-
-    if (ai.types.length === 0) {
-      setAI(mid, { error: 'Select at least one question type.' });
-      return;
-    }
-
-    // ✅ FIX: Resolve lessonId and courseId BEFORE any API call.
-    // courseId always comes from the URL param `id` (never undefined).
-    // lessonId comes from the first lesson of this module.
-    const lessonId = mod?.lessons?.[0]?._id || null;
-    const courseId = id;   // URL param — always defined
-
-    // For text source, a lesson is required
-    if (ai.source === 'lesson' && !lessonId) {
-      setAI(mid, {
-        step: 'error',
-        error: 'This module has no lessons yet. Add a text lesson first, or switch to "Upload a PDF".',
-      });
-      return;
-    }
-
-    // Store resolved IDs immediately in AI state so they survive async calls
-    setAI(mid, { error: '', step: 'generating', genPct: 5, lessonId, courseId });
-
-    let stepIdx = 0;
-    const iv = setInterval(() => {
-      stepIdx = (stepIdx + 1) % GEN_STEPS.length;
-      setAI(mid, p => ({ genLabel: GEN_STEPS[stepIdx], genPct: Math.min((p.genPct || 5) + 17, 88) }));
-    }, 900);
-
-    try {
-      let response;
-
-      if (ai.source === 'pdf' && ai.pdfFile) {
-        const fd = new FormData();
-        fd.append('pdf', ai.pdfFile);
-        fd.append('numQuestions', ai.numQ);
-        fd.append('difficulty', ai.difficulty);
-        fd.append('types', JSON.stringify(ai.types));
-        if (ai.focusArea) fd.append('focusArea', ai.focusArea);
-        // ✅ FIX: Always send lessonId in PDF request so backend can return courseId
-        if (lessonId) fd.append('lessonId', lessonId);
-
-        response = await authApi.post('/quizzes/generate-from-pdf', fd, {
-          headers: { 'Content-Type': 'multipart/form-data' },
-        });
-      } else {
-        response = await authApi.post('/quizzes/generate', {
-          lessonId,
-          numQuestions: ai.numQ,
-          difficulty:   ai.difficulty,
-          types:        ai.types,
-          focusArea:    ai.focusArea || '',
-        });
-      }
-
-      clearInterval(iv);
-
-      // ✅ FIX: Use IDs from response if present, ALWAYS fall back to
-      // locally resolved values — guarantees they are never undefined.
-      const resolvedLessonId = response.data.data?.lessonId || lessonId;
-      const resolvedCourseId = response.data.data?.courseId || courseId;
-
-      setAI(mid, {
-        step:     'done',
-        genPct:   100,
-        preview:  response.data.data.questions,
-        lessonId: resolvedLessonId,
-        courseId: resolvedCourseId,
-        error:    '',
-      });
-    } catch (err) {
-      clearInterval(iv);
-      setAI(mid, {
-        step:  'error',
-        error: err.response?.data?.message || 'AI generation failed. Please try again.',
-      });
-    }
-  };
-
-  // ── Save AI quiz ───────────────────────────────────────────
-  const saveAiQuiz = async (mid) => {
-    const ai    = getAI(mid);
-    const title = quizTitle[mid]?.trim();
-
-    if (!title)           { toast.error('Enter a quiz title before saving'); return; }
-    if (!ai.preview?.length) { toast.error('No questions to save'); return; }
-
-    // ✅ FIX: courseId always falls back to URL param so it is never undefined.
-    const lessonId = ai.lessonId;
-    const courseId = ai.courseId || id;
-
-    if (!lessonId) {
-      toast.error('No lesson linked to this quiz. Add a lesson to this module first, then regenerate.');
-      return;
-    }
-
-    setSaving(p => ({ ...p, [mid]: true }));
-    try {
-      await authApi.post('/quizzes/save-generated', {
-        lessonId,          // ✅ guaranteed defined
-        courseId,          // ✅ guaranteed defined
-        title,
-        questions:    ai.preview,
-        passingScore: 70,
-        timeLimit:    0,
-        maxAttempts:  3,
-        aiMeta: {
-          numQuestions: ai.numQ,
-          difficulty:   ai.difficulty,
-          types:        ai.types,
-          focusArea:    ai.focusArea,
-        },
-      });
-
-      // Auto-publish — non-critical, wrap in try/catch
-      try {
-        const quizzesRes = await authApi.get(`/quizzes/lesson/${lessonId}`);
-        const saved = quizzesRes.data.data?.[0];
-        if (saved?._id) await authApi.patch(`/quizzes/${saved._id}/publish`);
-      } catch { /* publish failure doesn't block save */ }
-
-      toast.success(`✓ Quiz "${title}" saved & published!`);
-      setAI(mid, { open: false, step: 'idle', preview: [], lessonId: null, courseId: null });
-      setQuizTitle(p => ({ ...p, [mid]: '' }));
-      await reload();
-    } catch (err) {
-      toast.error(err.response?.data?.message || 'Failed to save quiz');
-    }
-    setSaving(p => ({ ...p, [mid]: false }));
-  };
+  const [aiOpenModule, setAiOpenModule] = useState(null);
 
   // ── Data loading ───────────────────────────────────────────
   const reload = async () => {
@@ -370,9 +215,8 @@ export default function ManageCoursePage() {
 
             {modules.map((mod) => {
               const existingQuizzes = quizzesByModule[mod._id] || [];
-              const ai       = getAI(mod._id);
-              const isSaving = saving[mod._id] || false;
               const hasLesson = (mod.lessons?.length || 0) > 0;
+              const isAiOpen = aiOpenModule === mod._id;
 
               return (
                 <div key={mod._id} className="card" style={{ marginBottom: '1.5rem', overflow: 'hidden' }}>
@@ -384,14 +228,14 @@ export default function ManageCoursePage() {
                         {!hasLesson && <span style={{ marginLeft: 8, color: '#DC2626' }}>⚠ No lessons — add a lesson first</span>}
                       </div>
                     </div>
-                    <button onClick={() => setAI(mod._id, { open: !ai.open, step: 'idle', error: '' })}
+                    <button onClick={() => setAiOpenModule(isAiOpen ? null : mod._id)}
                       className="btn btn-sm"
                       style={{ background: '#F59E0B', color: '#fff', border: 'none', cursor: 'pointer' }}>
-                      {ai.open ? '✕ Close' : '✦ Generate Quiz with AI'}
+                      {isAiOpen ? '✕ Close' : '✦ Generate Quiz with AI'}
                     </button>
                   </div>
 
-                  {existingQuizzes.length === 0 && !ai.open && (
+                  {existingQuizzes.length === 0 && !isAiOpen && (
                     <div style={{ padding: '.85rem 1.25rem', fontSize: '.82rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>No quizzes yet. Use AI to generate one.</div>
                   )}
                   {existingQuizzes.map((q) => (
@@ -412,145 +256,13 @@ export default function ManageCoursePage() {
                   ))}
 
                   {/* ════ AI PANEL ════ */}
-                  {ai.open && (
-                    <div style={{ borderTop: '1px solid var(--border)', background: '#FFFBEB', padding: '1.5rem' }}>
-                      {ai.error && (
-                        <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 8, padding: '8px 12px', color: '#DC2626', fontSize: '.8rem', marginBottom: '1rem' }}>
-                          {ai.error}
-                        </div>
-                      )}
-
-                      {(ai.step === 'idle' || ai.step === 'error') && (
-                        <>
-                          <div style={{ fontWeight: 700, fontSize: '.95rem', color: '#92400E', marginBottom: '1rem' }}>✦ Generate Questions with AI</div>
-                          <div style={{ marginBottom: '1rem' }}>
-                            <label className="form-label">Content source</label>
-                            <div style={{ display: 'flex', gap: 8 }}>
-                              {[['lesson', '📄 First lesson text'], ['pdf', '📎 Upload a PDF']].map(([val, lbl]) => (
-                                <button key={val} type="button" onClick={() => setAI(mod._id, { source: val })}
-                                  style={{ padding: '5px 14px', fontSize: '.8rem', fontWeight: 600, borderRadius: 8, cursor: 'pointer', border: `2px solid ${ai.source === val ? '#F59E0B' : '#E5E7EB'}`, background: ai.source === val ? '#FEF3C7' : '#fff', color: ai.source === val ? '#92400E' : '#6B7280' }}>
-                                  {lbl}
-                                </button>
-                              ))}
-                            </div>
-                            {ai.source === 'lesson' && !hasLesson && (
-                              <div style={{ marginTop: 6, fontSize: '.78rem', color: '#DC2626', background: '#FEF2F2', padding: '5px 10px', borderRadius: 6 }}>
-                                ⚠ No lessons in this module. Add a text lesson first, or switch to "Upload a PDF".
-                              </div>
-                            )}
-                          </div>
-
-                          {ai.source === 'pdf' && (
-                            <div style={{ marginBottom: '1rem' }}>
-                              <label className="form-label">PDF file (max 20 MB)</label>
-                              <div onClick={() => {
-                                if (!fileRefs.current[mod._id]) {
-                                  const inp = document.createElement('input');
-                                  inp.type = 'file'; inp.accept = 'application/pdf';
-                                  inp.onchange = e => setAI(mod._id, { pdfFile: e.target.files[0] });
-                                  fileRefs.current[mod._id] = inp;
-                                }
-                                fileRefs.current[mod._id].click();
-                              }} style={{ border: '2px dashed #FCD34D', borderRadius: 8, padding: '1rem', textAlign: 'center', cursor: 'pointer', background: '#FFFBEB' }}>
-                                <span style={{ fontSize: '.85rem', color: '#92400E', fontWeight: ai.pdfFile ? 700 : 400 }}>
-                                  {ai.pdfFile ? `📎 ${ai.pdfFile.name}` : 'Click to choose a PDF'}
-                                </span>
-                              </div>
-                              {!hasLesson && (
-                                <div style={{ marginTop: 6, fontSize: '.78rem', color: '#B45309', background: '#FEF3C7', padding: '5px 10px', borderRadius: 6 }}>
-                                  ℹ Add a lesson to this module so the quiz can be linked to it.
-                                </div>
-                              )}
-                            </div>
-                          )}
-
-                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '.6rem', marginBottom: '1rem' }}>
-                            <div><label className="form-label">Questions to generate</label><input className="form-control" type="number" min={1} max={20} value={ai.numQ} onChange={e => setAI(mod._id, { numQ: Number(e.target.value) })} /></div>
-                            <div><label className="form-label">Difficulty</label><select className="form-control" value={ai.difficulty} onChange={e => setAI(mod._id, { difficulty: e.target.value })}><option value="easy">Easy</option><option value="medium">Medium</option><option value="hard">Hard</option></select></div>
-                            <div><label className="form-label">Focus area (optional)</label><input className="form-control" placeholder="e.g. CSS flexbox" value={ai.focusArea} onChange={e => setAI(mod._id, { focusArea: e.target.value })} /></div>
-                          </div>
-
-                          <div style={{ marginBottom: '1rem' }}>
-                            <label className="form-label">Question types</label>
-                            <div style={{ display: 'flex', gap: 8 }}>
-                              {[['mcq', 'Multiple Choice'], ['true_false', 'True / False']].map(([val, lbl]) => {
-                                const sel = ai.types.includes(val);
-                                return (
-                                  <button key={val} type="button" onClick={() => toggleAiType(mod._id, val)}
-                                    style={{ padding: '5px 14px', borderRadius: 999, fontSize: '.8rem', fontWeight: 600, cursor: 'pointer', border: `2px solid ${sel ? '#F59E0B' : '#E5E7EB'}`, background: sel ? '#FEF3C7' : '#fff', color: sel ? '#92400E' : '#6B7280' }}>
-                                    {sel ? '✓ ' : ''}{lbl}
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          </div>
-
-                          <button type="button" onClick={() => runAiGenerate(mod._id)}
-                            style={{ width: '100%', padding: '10px', borderRadius: 8, border: 'none', background: '#F59E0B', color: '#fff', fontWeight: 700, fontSize: '.9rem', cursor: 'pointer', boxShadow: '0 3px 10px rgba(245,158,11,0.3)' }}>
-                            ✦ Generate {ai.numQ} Questions with AI
-                          </button>
-                        </>
-                      )}
-
-                      {ai.step === 'generating' && (
-                        <div style={{ textAlign: 'center', padding: '1.5rem .5rem' }}>
-                          <style>{`@keyframes aiSpin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}`}</style>
-                          <div style={{ fontSize: 30, display: 'inline-block', animation: 'aiSpin 1.5s linear infinite', marginBottom: '.75rem' }}>✦</div>
-                          <div style={{ fontWeight: 700, color: '#92400E', fontSize: '.9rem', marginBottom: 4 }}>{ai.genLabel}</div>
-                          <div style={{ fontSize: '.78rem', color: '#B45309', marginBottom: '1rem' }}>AI is reading your content and crafting questions…</div>
-                          <div style={{ height: 6, background: '#FEF3C7', borderRadius: 6, overflow: 'hidden', marginBottom: 6 }}>
-                            <div style={{ height: '100%', background: '#F59E0B', borderRadius: 6, width: `${ai.genPct}%`, transition: 'width .4s ease' }} />
-                          </div>
-                          <div style={{ fontSize: '.72rem', color: '#B45309' }}>{ai.genPct}% — usually takes 5–15 seconds</div>
-                        </div>
-                      )}
-
-                      {ai.step === 'done' && ai.preview.length > 0 && (
-                        <div>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '.85rem' }}>
-                            <span style={{ fontWeight: 700, color: '#92400E', fontSize: '.9rem' }}>✓ {ai.preview.length} questions ready</span>
-                            <button type="button" onClick={() => setAI(mod._id, { step: 'idle' })}
-                              style={{ fontSize: '.75rem', padding: '3px 10px', borderRadius: 6, border: '1px solid #FCD34D', background: '#FEF3C7', color: '#92400E', cursor: 'pointer', fontWeight: 600 }}>⟳ Regenerate</button>
-                          </div>
-                          {ai.preview.map((q, i) => (
-                            <div key={i} style={{ border: '1px solid #FCD34D', borderRadius: 8, padding: '.85rem', marginBottom: '.6rem', background: '#FFFBEB' }}>
-                              <div style={{ display: 'flex', gap: 5, marginBottom: 6, flexWrap: 'wrap' }}>
-                                <span style={chip('#F59E0B')}>Q{i + 1}</span>
-                                <span style={chip('#B45309')}>{q.type === 'mcq' ? 'MCQ' : 'T/F'}</span>
-                                <span style={chip('#D97706')}>{q.difficulty}</span>
-                                {q.topic && <span style={chip('#92400E')}>{q.topic}</span>}
-                              </div>
-                              <div style={{ fontWeight: 600, fontSize: '.85rem', marginBottom: 6, color: '#111827' }}>{q.questionText}</div>
-                              {q.type === 'mcq' && (
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                                  {q.options?.map((o, j) => (
-                                    <div key={j} style={{ fontSize: '.78rem', padding: '3px 9px', borderRadius: 5, background: o.isCorrect ? '#F0FDF4' : '#F9FAFB', color: o.isCorrect ? '#15803D' : '#374151', border: `1px solid ${o.isCorrect ? '#86EFAC' : '#E5E7EB'}`, fontWeight: o.isCorrect ? 700 : 400 }}>
-                                      {o.isCorrect ? '✓ ' : ''}{o.text}
-                                    </div>
-                                  ))}
-                                </div>
-                              )}
-                              {q.type === 'true_false' && (
-                                <span style={{ fontSize: '.78rem', padding: '3px 9px', borderRadius: 5, background: '#F0FDF4', color: '#15803D', fontWeight: 700, border: '1px solid #86EFAC' }}>✓ {q.correctAnswer}</span>
-                              )}
-                              {q.explanation && (
-                                <div style={{ fontSize: '.72rem', color: '#92400E', marginTop: 6, background: '#FEF3C7', padding: '4px 8px', borderRadius: 5, borderLeft: '3px solid #F59E0B' }}>{q.explanation}</div>
-                              )}
-                            </div>
-                          ))}
-                          <div style={{ marginTop: '1rem', padding: '1rem', background: '#FEF3C7', borderRadius: 8, border: '1px solid #FCD34D' }}>
-                            <label className="form-label" style={{ color: '#92400E', fontWeight: 700 }}>Quiz Title *</label>
-                            <input className="form-control" placeholder="e.g. Python Fundamentals Quiz"
-                              value={quizTitle[mod._id] || ''}
-                              onChange={e => setQuizTitle(p => ({ ...p, [mod._id]: e.target.value }))}
-                              style={{ marginBottom: '.75rem' }} />
-                            <button type="button" onClick={() => saveAiQuiz(mod._id)} disabled={isSaving}
-                              style={{ width: '100%', padding: '10px', borderRadius: 8, border: 'none', background: '#92400E', color: '#fff', fontWeight: 700, fontSize: '.9rem', cursor: isSaving ? 'not-allowed' : 'pointer', opacity: isSaving ? 0.7 : 1 }}>
-                              {isSaving ? '⏳ Saving & Publishing...' : `✓ Save & Publish Quiz (${ai.preview.length} questions)`}
-                            </button>
-                          </div>
-                        </div>
-                      )}
+                  {isAiOpen && (
+                    <div style={{ borderTop: '1px solid var(--border)', background: 'var(--bg-2)', padding: '1.5rem' }}>
+                      <AIQuizGenerator
+                        lesson={mod.lessons?.[0]}
+                        onClose={() => setAiOpenModule(null)}
+                        onSaveSuccess={() => reload()}
+                      />
                     </div>
                   )}
                 </div>

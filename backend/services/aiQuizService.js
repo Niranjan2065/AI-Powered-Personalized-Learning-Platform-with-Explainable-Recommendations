@@ -127,31 +127,53 @@ function parseAndValidate(raw) {
 }
 
 // ── Fallback question generator (no API key) ──────────────────
-function generateFallbackQuestions({ content, numQuestions, difficulty }) {
-  const words = content.split(/\s+/).filter(w => w.length > 4).slice(0, 20);
+function generateFallbackQuestions({ content, numQuestions, difficulty, types = ['mcq'] }) {
+  const words = content.split(/\s+/).filter(w => w.length > 4).slice(0, 100);
   const questions = [];
 
-  for (let i = 0; i < Math.min(numQuestions, 5); i++) {
-    const word = words[i * 2] || 'concept';
-    questions.push({
-      type: i % 2 === 0 ? 'mcq' : 'true_false',
-      questionText: i % 2 === 0
-        ? `Which of the following best describes "${word}" as covered in this lesson?`
-        : `The lesson covers the topic of "${word}". (True/False)`,
-      difficulty,
-      topic: word,
-      bloomLevel: 'understand',
-      explanation: 'Please configure GROQ_API_KEY for AI-generated explanations.',
-      points: 1,
-      ...(i % 2 === 0 ? {
+  for (let i = 0; i < numQuestions; i++) {
+    const word = words[(i * 3) % words.length] || 'concept';
+    const qType = types[i % types.length] || 'mcq';
+
+    if (qType === 'mcq') {
+      questions.push({
+        type: 'mcq',
+        questionText: `Which of the following best describes "${word}" as covered in this lesson?`,
+        difficulty: difficulty || 'medium',
+        topic: word,
+        bloomLevel: 'understand',
+        explanation: 'Please configure GROQ_API_KEY for AI-generated explanations.',
+        points: 1,
         options: [
           { text: `A key concept related to ${word}`, isCorrect: true },
           { text: `An unrelated concept`, isCorrect: false },
           { text: `Something else entirely`, isCorrect: false },
           { text: `None of the above`, isCorrect: false },
         ]
-      } : { correctAnswer: 'true' }),
-    });
+      });
+    } else if (qType === 'true_false') {
+      questions.push({
+        type: 'true_false',
+        questionText: `The lesson covers the topic of "${word}". (True/False)`,
+        difficulty: difficulty || 'medium',
+        topic: word,
+        bloomLevel: 'remember',
+        explanation: 'Please configure GROQ_API_KEY for AI-generated explanations.',
+        points: 1,
+        correctAnswer: 'true'
+      });
+    } else {
+      questions.push({
+        type: 'short_answer',
+        questionText: `Briefly define the role of "${word}" in the context of this lesson.`,
+        difficulty: difficulty || 'medium',
+        topic: word,
+        bloomLevel: 'understand',
+        explanation: 'Please configure GROQ_API_KEY for AI-generated explanations.',
+        points: 1,
+        correctAnswer: `${word}`
+      });
+    }
   }
 
   return questions;
@@ -168,7 +190,7 @@ async function generateQuestions(config) {
   if (!groq) {
     console.warn('⚠️  Using fallback question generation (no GROQ_API_KEY)');
     return {
-      questions: generateFallbackQuestions({ content, numQuestions, difficulty }),
+      questions: generateFallbackQuestions({ content, numQuestions, difficulty, types }),
       meta: { model: 'fallback', provider: 'local', generatedAt: new Date(), note: 'Configure GROQ_API_KEY for AI generation' },
     };
   }
