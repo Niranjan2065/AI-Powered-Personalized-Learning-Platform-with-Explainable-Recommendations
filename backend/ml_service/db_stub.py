@@ -320,122 +320,26 @@ def _build_weaknesses(
     return weaknesses
 
 
-# ── Topic resource library ────────────────────────────────────────────────────
-# Keyed to your REAL topic names from topic_id_map.json.
-# Add more topics here as your course library grows.
+# ── Topic resource library ──────────────────────────────────────────────────────
+# Loaded from ai_engine/data/raw/topic_resources.json
+# Add new topics to that file — no code changes needed.
 
-TOPIC_RESOURCES: dict[str, list[dict]] = {
-    "Variables": [
-        {"id": "res_var_01", "title": "Python Variables Explained",
-         "url": "https://www.youtube.com/results?search_query=python+variables+explained+beginner",
-         "type": "video", "difficulty": "beginner", "quality_score": 0.92, "site": "YouTube"},
-        {"id": "res_var_02", "title": "Python Variables – W3Schools",
-         "url": "https://www.w3schools.com/python/python_variables.asp",
-         "type": "article", "difficulty": "beginner", "quality_score": 0.88, "site": "W3Schools"},
-        {"id": "res_var_03", "title": "Variables Practice – HackerRank",
-         "url": "https://www.hackerrank.com/domains/python?filters%5Bsubdomains%5D%5B%5D=py-basic-data-types",
-         "type": "practice", "difficulty": "beginner", "quality_score": 0.85, "site": "HackerRank"},
-    ],
-    "Data Types": [
-        {"id": "res_dt_01", "title": "Python Data Types – Full Tutorial",
-         "url": "https://www.youtube.com/results?search_query=python+data+types+tutorial",
-         "type": "video", "difficulty": "beginner", "quality_score": 0.91, "site": "YouTube"},
-        {"id": "res_dt_02", "title": "Python Data Types – GeeksForGeeks",
-         "url": "https://www.geeksforgeeks.org/python-data-types/",
-         "type": "article", "difficulty": "beginner", "quality_score": 0.87, "site": "GeeksForGeeks"},
-        {"id": "res_dt_03", "title": "Data Types Practice – W3Schools",
-         "url": "https://www.w3schools.com/python/exercise.asp?filename=exercise_datatypes1",
-         "type": "practice", "difficulty": "beginner", "quality_score": 0.83, "site": "W3Schools"},
-    ],
-    "Basic Syntax": [
-        {"id": "res_bs_01", "title": "Python Syntax for Beginners",
-         "url": "https://www.youtube.com/results?search_query=python+syntax+beginners",
-         "type": "video", "difficulty": "beginner", "quality_score": 0.90, "site": "YouTube"},
-        {"id": "res_bs_02", "title": "Python Syntax – W3Schools",
-         "url": "https://www.w3schools.com/python/python_syntax.asp",
-         "type": "article", "difficulty": "beginner", "quality_score": 0.88, "site": "W3Schools"},
-        {"id": "res_bs_03", "title": "Python Basics – Codecademy",
-         "url": "https://www.codecademy.com/learn/learn-python-3",
-         "type": "practice", "difficulty": "beginner", "quality_score": 0.92, "site": "Codecademy"},
-    ],
-    "Input and Output": [
-        {"id": "res_io_01", "title": "Python Input and Output – Tutorial",
-         "url": "https://www.youtube.com/results?search_query=python+input+output+print+tutorial",
-         "type": "video", "difficulty": "beginner", "quality_score": 0.89, "site": "YouTube"},
-        {"id": "res_io_02", "title": "Python Input/Output – Real Python",
-         "url": "https://realpython.com/python-input-output/",
-         "type": "article", "difficulty": "beginner", "quality_score": 0.91, "site": "Real Python"},
-        {"id": "res_io_03", "title": "Python I/O Exercises – W3Schools",
-         "url": "https://www.w3schools.com/python/exercise.asp?filename=exercise_syntax1",
-         "type": "practice", "difficulty": "beginner", "quality_score": 0.82, "site": "W3Schools"},
-    ],
-    "if_statements": [
-        {"id": "res_if_01", "title": "Python If Statements – Full Explanation",
-         "url": "https://www.youtube.com/results?search_query=python+if+else+elif+statements+explained",
-         "type": "video", "difficulty": "beginner", "quality_score": 0.93, "site": "YouTube"},
-        {"id": "res_if_02", "title": "Python Conditions – W3Schools",
-         "url": "https://www.w3schools.com/python/python_conditions.asp",
-         "type": "article", "difficulty": "beginner", "quality_score": 0.88, "site": "W3Schools"},
-        {"id": "res_if_03", "title": "Conditional Statements – Exercism",
-         "url": "https://exercism.org/tracks/python/exercises/bob",
-         "type": "practice", "difficulty": "beginner", "quality_score": 0.90, "site": "Exercism"},
-    ],
-    "Functions": [
-        {"id": "res_fn_01", "title": "Python Functions – Crash Course",
-         "url": "https://www.youtube.com/results?search_query=python+functions+crash+course",
-         "type": "video", "difficulty": "beginner", "quality_score": 0.94, "site": "YouTube"},
-        {"id": "res_fn_02", "title": "Python Functions – Real Python",
-         "url": "https://realpython.com/defining-your-own-python-function/",
-         "type": "article", "difficulty": "beginner", "quality_score": 0.93, "site": "Real Python"},
-        {"id": "res_fn_03", "title": "Functions Practice – HackerRank",
-         "url": "https://www.hackerrank.com/challenges/write-a-function/problem",
-         "type": "practice", "difficulty": "beginner", "quality_score": 0.88, "site": "HackerRank"},
-    ],
-    "Introduction to Python": [
-        {"id": "res_py_01", "title": "Python for Beginners – Full Course",
-         "url": "https://www.youtube.com/results?search_query=python+for+beginners+full+course",
-         "type": "video", "difficulty": "beginner", "quality_score": 0.95, "site": "YouTube"},
-        {"id": "res_py_02", "title": "Python Introduction – Khan Academy",
-         "url": "https://www.khanacademy.org/computing/intro-to-python-fundamentals",
-         "type": "article", "difficulty": "beginner", "quality_score": 0.92, "site": "Khan Academy"},
-        {"id": "res_py_03", "title": "Learn Python – Codecademy",
-         "url": "https://www.codecademy.com/learn/learn-python-3",
-         "type": "practice", "difficulty": "beginner", "quality_score": 0.94, "site": "Codecademy"},
-    ],
-    "Control Structures": [
-        {"id": "res_cs_01", "title": "Python Loops and Control Flow",
-         "url": "https://www.youtube.com/results?search_query=python+loops+control+flow+for+while",
-         "type": "video", "difficulty": "beginner", "quality_score": 0.91, "site": "YouTube"},
-        {"id": "res_cs_02", "title": "Python Control Flow – GeeksForGeeks",
-         "url": "https://www.geeksforgeeks.org/python-control-flow/",
-         "type": "article", "difficulty": "beginner", "quality_score": 0.87, "site": "GeeksForGeeks"},
-        {"id": "res_cs_03", "title": "Control Structures Practice – Exercism",
-         "url": "https://exercism.org/tracks/python/exercises/collatz-conjecture",
-         "type": "practice", "difficulty": "beginner", "quality_score": 0.89, "site": "Exercism"},
-    ],
-    "HTML Basics": [
-        {"id": "res_html_01", "title": "HTML Full Course for Beginners",
-         "url": "https://www.youtube.com/results?search_query=HTML+full+course+beginners",
-         "type": "video", "difficulty": "beginner", "quality_score": 0.93, "site": "YouTube"},
-        {"id": "res_html_02", "title": "HTML Tutorial – W3Schools",
-         "url": "https://www.w3schools.com/html/",
-         "type": "article", "difficulty": "beginner", "quality_score": 0.90, "site": "W3Schools"},
-        {"id": "res_html_03", "title": "HTML Practice – freeCodeCamp",
-         "url": "https://www.freecodecamp.org/learn/2022/responsive-web-design/",
-         "type": "practice", "difficulty": "beginner", "quality_score": 0.94, "site": "freeCodeCamp"},
-    ],
-    "Arrays": [
-        {"id": "res_arr_01", "title": "Python Lists (Arrays) – Tutorial",
-         "url": "https://www.youtube.com/results?search_query=python+lists+arrays+tutorial",
-         "type": "video", "difficulty": "beginner", "quality_score": 0.91, "site": "YouTube"},
-        {"id": "res_arr_02", "title": "Python Lists – GeeksForGeeks",
-         "url": "https://www.geeksforgeeks.org/python-lists/",
-         "type": "article", "difficulty": "beginner", "quality_score": 0.88, "site": "GeeksForGeeks"},
-        {"id": "res_arr_03", "title": "Array Problems – LeetCode",
-         "url": "https://leetcode.com/tag/array/",
-         "type": "practice", "difficulty": "beginner", "quality_score": 0.90, "site": "LeetCode"},
-    ],
-}
+RESOURCES_JSON_PATH = PROJECT_ROOT / "ai_engine" / "data" / "raw" / "topic_resources.json"
+
+@lru_cache(maxsize=1)
+def _load_topic_resources() -> dict:
+    """
+    Loads the topic → resource library from topic_resources.json.
+    Falls back to an empty dict if the file is missing.
+    Cached after first load so disk is only read once per process lifetime.
+    """
+    if RESOURCES_JSON_PATH.exists():
+        with open(RESOURCES_JSON_PATH) as f:
+            raw = json.load(f)
+        # Strip the _meta key — only keep topic entries
+        return {k: v for k, v in raw.items() if k != "_meta"}
+    print(f"[db_stub] WARNING: topic_resources.json not found at {RESOURCES_JSON_PATH}")
+    return {}
 
 
 # ── In-memory feedback log ────────────────────────────────────────────────────
@@ -533,27 +437,32 @@ def get_topic_resources(topic_id: str) -> list[dict]:
     Returns curated resources for a topic.
     topic_id can be the topic name string e.g. "if_statements"
     or a numeric string e.g. "106" (auto-resolved via topic_id_map.json).
+    Reads from ai_engine/data/raw/topic_resources.json — no hardcoded data.
     """
+    library = _load_topic_resources()
+
     # Try resolving numeric ID → topic name
     topic_name = topic_id
     try:
-        num_id = int(topic_id)
+        num_id   = int(topic_id)
         resolved = _topic_id_to_name(num_id)
         if resolved != f"Topic {num_id}":
             topic_name = resolved
     except ValueError:
         pass
 
-    resources = TOPIC_RESOURCES.get(topic_name, [])
+    # Exact match first
+    entry = library.get(topic_name)
+    if entry:
+        return entry.get("resources", [])
 
-    # Fallback: try case-insensitive match
-    if not resources:
-        for key, val in TOPIC_RESOURCES.items():
-            if key.lower().replace(" ", "_") == topic_name.lower().replace(" ", "_"):
-                resources = val
-                break
+    # Case-insensitive / underscore-insensitive fallback
+    normalise = lambda s: s.lower().replace(" ", "_").replace("-", "_")
+    for key, val in library.items():
+        if normalise(key) == normalise(topic_name):
+            return val.get("resources", [])
 
-    return resources
+    return []
 
 
 def get_student_progress(student_id: str) -> Optional[list[dict]]:

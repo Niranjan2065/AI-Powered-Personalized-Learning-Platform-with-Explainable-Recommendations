@@ -31,6 +31,21 @@ const ML_TIMEOUT   = 30_000;
 const DATA_DIR     = path.resolve(__dirname, '../../ai_engine/data/raw');
 const ID_MAP_PATH  = path.join(DATA_DIR, 'student_id_map.json');
 
+// Shared secret sent on every request to the Python ML service.
+// Must match ML_SECRET in the environment the Flask service runs in
+// (backend/ml_service/app.py reads the same env var name).
+// If unset, the header is simply omitted — app.py's require_ml_secret
+// decorator no-ops when its own ML_SECRET is unset too, so local dev
+// without any .env still works without configuration.
+const ML_SECRET = process.env.ML_SECRET || null;
+
+if (!ML_SECRET) {
+  console.warn(
+    '[ML Bridge] ⚠️  ML_SECRET is not set. Requests to the Python ML service ' +
+    'will be sent without auth. Set ML_SECRET in backend/.env before deploying.'
+  );
+}
+
 // ── Simple HTTP helper (replaces axios) ───────────────────────────────────────
 function httpRequest(url, options = {}) {
   return new Promise((resolve, reject) => {
@@ -43,7 +58,13 @@ function httpRequest(url, options = {}) {
       port:     parsed.port,
       path:     parsed.pathname + parsed.search,
       method:   options.method || 'GET',
-      headers:  { 'Content-Type': 'application/json', ...(options.headers || {}) },
+      headers: {
+        'Content-Type': 'application/json',
+        // Sent on every request — app.py validates this on protected routes.
+        // Omitted entirely when ML_SECRET is unset (matches Flask's dev-mode no-op).
+        ...(ML_SECRET ? { 'X-ML-Secret': ML_SECRET } : {}),
+        ...(options.headers || {}),
+      },
     };
 
     const req = lib.request(reqOptions, (res) => {

@@ -105,6 +105,7 @@ export const generateRecommendations = ()               => API.post('/recommenda
 export const getMyRecommendations    = ()               => API.get('/recommendations/my');
 export const getMyAnalysis           = ()               => API.get('/recommendations/analysis');
 export const dismissRecommendation   = (recId, itemId)  => API.put(`/recommendations/${recId}/item/${itemId}/dismiss`);
+export const getReviewDue            = (limit = 5)      => API.get(`/recommendations/review-due?limit=${limit}`);
 
 // ── Admin ─────────────────────────────────────────────────────────────────────
 export const getAdminStats          = ()       => API.get('/admin/stats');

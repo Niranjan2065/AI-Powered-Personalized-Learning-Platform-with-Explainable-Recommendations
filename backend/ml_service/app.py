@@ -52,6 +52,8 @@ print(f"[ML Service] db_stub.py exists = {os.path.isfile(os.path.join(ML_DIR, 'd
 
 # ── Imports (after path setup) ────────────────────────────────────────────────
 
+from functools import wraps
+
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 
@@ -67,6 +69,47 @@ from ai_engine.src.generate_reason import generate_xai_reason
 
 app = Flask(__name__)
 CORS(app)
+
+# ── Shared-secret auth ────────────────────────────────────────────────────────
+# Protects expensive/sensitive endpoints (model retraining, student data reads)
+# from being called by anyone who can reach this service on the network.
+#
+# The Node.js backend (mlBridgeService.js) sends this same value in the
+# X-ML-Secret header on every request. Set ML_SECRET to the same value in
+# both backend/.env and the environment this Flask service runs in.
+#
+# If ML_SECRET is not set, auth is skipped with a loud warning — this keeps
+# local dev frictionless but should never happen in any shared/deployed
+# environment. Always set ML_SECRET outside of local development.
+
+ML_SECRET = os.environ.get('ML_SECRET')
+
+if not ML_SECRET:
+    print(
+        '[ML Service] ⚠️  WARNING: ML_SECRET is not set. '
+        '/ml/train and student data endpoints are UNPROTECTED. '
+        'Set ML_SECRET in your environment before deploying.'
+    )
+
+
+def require_ml_secret(fn):
+    """Decorator — rejects requests missing/mismatching the X-ML-Secret header.
+
+    No-ops (allows all requests) when ML_SECRET is unset, so local dev
+    without an .env file still works out of the box.
+    """
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        if not ML_SECRET:
+            return fn(*args, **kwargs)  # auth disabled — dev mode only
+
+        provided = request.headers.get('X-ML-Secret')
+        if not provided or provided != ML_SECRET:
+            return jsonify({
+                'error': 'Unauthorized — missing or invalid X-ML-Secret header.'
+            }), 401
+        return fn(*args, **kwargs)
+    return wrapper
 
 # ── Lazy-import ML modules ────────────────────────────────────────────────────
 
@@ -157,6 +200,7 @@ def health():
 
 
 @app.route('/ml/train', methods=['POST'])
+@require_ml_secret
 def train():
     try:
         preprocess, train_and_save = _import_pipeline()
@@ -174,6 +218,7 @@ def train():
 
 
 @app.route('/api/recommendations/<int:student_id>', methods=['GET'])
+@require_ml_secret
 def recommendations(student_id):
     top_n = request.args.get('top_n', 5, type=int)
     try:
@@ -210,6 +255,7 @@ def recommendations(student_id):
 
 
 @app.route('/api/recommendations/<int:student_id>/lime', methods=['GET'])
+@require_ml_secret
 def lime_explanation(student_id):
     try:
         _, _, explain_with_lime, _, _ = _import_engine()
@@ -224,6 +270,7 @@ def lime_explanation(student_id):
 # ═════════════════════════════════════════════════════════════════════════════
 
 @app.route('/api/students/<student_id>/recommendations', methods=['GET'])
+@require_ml_secret
 def student_recommendations(student_id):
     """
     GET /api/students/<student_id>/recommendations?limit=5
@@ -253,6 +300,7 @@ def student_recommendations(student_id):
 
 
 @app.route('/api/students/<student_id>/progress', methods=['GET'])
+@require_ml_secret
 def student_progress(student_id):
     """
     GET /api/students/<student_id>/progress
@@ -277,6 +325,7 @@ def student_progress(student_id):
 
 
 @app.route('/api/students/<student_id>/resource-feedback', methods=['POST'])
+@require_ml_secret
 def resource_feedback(student_id):
     """
     POST /api/students/<student_id>/resource-feedback

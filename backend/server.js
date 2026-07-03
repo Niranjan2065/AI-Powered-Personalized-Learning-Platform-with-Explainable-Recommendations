@@ -12,8 +12,11 @@ const rateLimit    = require('express-rate-limit');
 const cookieParser = require('cookie-parser');
 const path         = require('path');
 
+const cron = require('node-cron');
+
 const connectDB = require('./config/db');
 const { errorHandler, notFound } = require('./middleware/errorHandler');
+const { triggerMLTraining, isMLServiceUp } = require('./services/mlBridgeService');
 
 const authRoutes           = require('./routes/authRoutes');
 const courseRoutes         = require('./routes/courseRoutes');
@@ -123,6 +126,82 @@ const server = app.listen(PORT, () => {
   console.log(`║   📡 Port: ${PORT}  →  http://localhost:${PORT}      ║`);
   console.log('╚══════════════════════════════════════════════╝\n');
 });
+
+// ── Weekly ML model retrain ────────────────────────────────────────────────
+// Runs every Sunday at 02:00 AM server time.
+// Cron syntax:  ┌─ second (optional)
+//               │  ┌─ minute
+//               │  │  ┌─ hour
+//               │  │  │   ┌─ day-of-month
+//               │  │  │   │  ┌─ month
+//               │  │  │   │  │  ┌─ day-of-week  (0 = Sunday)
+//               0  0  2   *  *  0
+
+const ML_CRON_SCHEDULE = process.env.ML_CRON_SCHEDULE || '0 0 2 * * 0';
+
+async function runMLRetrain(triggeredBy = 'cron') {
+  const tag = `[ML Cron][${triggeredBy}]`;
+  console.log(`\n${tag} ─── Starting weekly ML retrain ───`);
+  console.log(`${tag} Time: ${new Date().toISOString()}`);
+
+  // 1. Check the Python service is up before trying to train
+  const serviceUp = await isMLServiceUp();
+  if (!serviceUp) {
+    console.error(
+      `${tag} ✗ Python ML service is unreachable at ${process.env.ML_SERVICE_URL || 'http://localhost:5001'}.\n` +
+      `${tag}   Retrain skipped — will try again next Sunday at 02:00 AM.`
+    );
+    return;
+  }
+
+  // 2. Run export + retrain
+  try {
+    const result = await triggerMLTraining();
+
+    if (result.success) {
+      console.log(`${tag} ✓ Retrain complete — ${result.message}`);
+    } else {
+      // Not enough data yet (< 3 quiz interactions) — normal during early use
+      console.warn(`${tag} ⚠ Retrain skipped — ${result.message}`);
+    }
+  } catch (err) {
+    // Log but never crash the server — cron errors are non-fatal
+    console.error(`${tag} ✗ Retrain error (non-fatal):`, err.message);
+  }
+
+  console.log(`${tag} ─── Done ───\n`);
+}
+
+if (process.env.NODE_ENV !== 'test') {
+  // Validate the schedule string before registering — bad cron syntax would
+  // throw immediately at startup rather than silently doing nothing.
+  if (!cron.validate(ML_CRON_SCHEDULE)) {
+    console.error(
+      `[ML Cron] ✗ Invalid ML_CRON_SCHEDULE: "${ML_CRON_SCHEDULE}". ` +
+      `Using default "0 0 2 * * 0" (Sunday 02:00 AM).`
+    );
+  }
+
+  const mlCronJob = cron.schedule(
+    cron.validate(ML_CRON_SCHEDULE) ? ML_CRON_SCHEDULE : '0 0 2 * * 0',
+    () => runMLRetrain('cron'),
+    {
+      scheduled: true,
+      timezone:  process.env.ML_CRON_TIMEZONE || 'Asia/Kolkata',
+    }
+  );
+
+  console.log(
+    `[ML Cron] ✓ Weekly retrain scheduled — ` +
+    `every Sunday at 02:00 AM (${process.env.ML_CRON_TIMEZONE || 'Asia/Kolkata'})`
+  );
+
+  // Expose graceful stop so the shutdown handler can clean up
+  process.on('SIGTERM', () => {
+    mlCronJob.stop();
+    console.log('[ML Cron] Job stopped (SIGTERM).');
+  });
+}
 
 process.on('unhandledRejection', (err) => {
   console.error(`❌ Unhandled Rejection: ${err.message}`);

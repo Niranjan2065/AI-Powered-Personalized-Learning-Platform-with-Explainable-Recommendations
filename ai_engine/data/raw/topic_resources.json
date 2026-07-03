@@ -1,0 +1,590 @@
+{
+  "_meta": {
+    "description": "Curated resource library for AI Learning Platform — keyed to real topic names from topic_id_map.json",
+    "topic_id_map": {
+      "HTML Basics": 100,
+      "Input and Output": 101,
+      "Introduction to Python": 102,
+      "Basic Syntax": 103,
+      "Variables": 104,
+      "Data Types": 105,
+      "if_statements": 106,
+      "Functions": 107,
+      "Control Structures": 108,
+      "Arrays": 109
+    },
+    "resource_types": ["video", "article", "practice"],
+    "difficulty_levels": ["beginner", "intermediate", "advanced"],
+    "version": "1.0.0"
+  },
+
+  "HTML Basics": {
+    "topic_id": 100,
+    "subject": "Web Development",
+    "resources": [
+      {
+        "id": "res_html_01",
+        "title": "HTML Full Course — Build a Website Tutorial",
+        "url": "https://www.youtube.com/watch?v=pQN-pnXPaVg",
+        "type": "video",
+        "difficulty": "beginner",
+        "quality_score": 0.96,
+        "site": "YouTube (freeCodeCamp)",
+        "description": "4-hour beginner HTML course covering all core tags, forms, tables and page structure"
+      },
+      {
+        "id": "res_html_02",
+        "title": "HTML Tutorial — W3Schools",
+        "url": "https://www.w3schools.com/html/default.asp",
+        "type": "article",
+        "difficulty": "beginner",
+        "quality_score": 0.91,
+        "site": "W3Schools",
+        "description": "Interactive reference covering every HTML element with live try-it examples"
+      },
+      {
+        "id": "res_html_03",
+        "title": "Introduction to HTML — MDN Web Docs",
+        "url": "https://developer.mozilla.org/en-US/docs/Learn/HTML/Introduction_to_HTML",
+        "type": "article",
+        "difficulty": "beginner",
+        "quality_score": 0.94,
+        "site": "MDN Web Docs",
+        "description": "Mozilla's official HTML learning guide — most authoritative source on the web"
+      },
+      {
+        "id": "res_html_04",
+        "title": "Responsive Web Design Certification — HTML section",
+        "url": "https://www.freecodecamp.org/learn/2022/responsive-web-design/",
+        "type": "practice",
+        "difficulty": "beginner",
+        "quality_score": 0.95,
+        "site": "freeCodeCamp",
+        "description": "Free hands-on HTML certification — build 20 real projects step by step"
+      },
+      {
+        "id": "res_html_05",
+        "title": "HTML Exercises — W3Schools",
+        "url": "https://www.w3schools.com/html/html_exercises.asp",
+        "type": "practice",
+        "difficulty": "beginner",
+        "quality_score": 0.87,
+        "site": "W3Schools",
+        "description": "Short fill-in exercises for every HTML topic — instant browser feedback"
+      }
+    ]
+  },
+
+  "Input and Output": {
+    "topic_id": 101,
+    "subject": "Python Programming",
+    "resources": [
+      {
+        "id": "res_io_01",
+        "title": "Python Input and Output — Bro Code",
+        "url": "https://www.youtube.com/watch?v=HQQLr-8ays8",
+        "type": "video",
+        "difficulty": "beginner",
+        "quality_score": 0.92,
+        "site": "YouTube (Bro Code)",
+        "description": "Clear 12-minute tutorial on print(), input(), f-strings and type conversion"
+      },
+      {
+        "id": "res_io_02",
+        "title": "Python Input and Output — Real Python",
+        "url": "https://realpython.com/python-input-output/",
+        "type": "article",
+        "difficulty": "beginner",
+        "quality_score": 0.93,
+        "site": "Real Python",
+        "description": "Deep-dive article on print formatting, file I/O and stdin/stdout with examples"
+      },
+      {
+        "id": "res_io_03",
+        "title": "Python I/O — W3Schools",
+        "url": "https://www.w3schools.com/python/python_user_input.asp",
+        "type": "article",
+        "difficulty": "beginner",
+        "quality_score": 0.87,
+        "site": "W3Schools",
+        "description": "Quick reference page for input() and print() with live code editor"
+      },
+      {
+        "id": "res_io_04",
+        "title": "Python Input/Output Problems — HackerRank",
+        "url": "https://www.hackerrank.com/challenges/python-print/problem",
+        "type": "practice",
+        "difficulty": "beginner",
+        "quality_score": 0.88,
+        "site": "HackerRank",
+        "description": "Beginner HackerRank problems specifically on Python print and input handling"
+      },
+      {
+        "id": "res_io_05",
+        "title": "Say Hello, World With Python — HackerRank",
+        "url": "https://www.hackerrank.com/challenges/py-hello-world/problem",
+        "type": "practice",
+        "difficulty": "beginner",
+        "quality_score": 0.85,
+        "site": "HackerRank",
+        "description": "Entry-level output problem — perfect first practice task"
+      }
+    ]
+  },
+
+  "Introduction to Python": {
+    "topic_id": 102,
+    "subject": "Python Programming",
+    "resources": [
+      {
+        "id": "res_py_01",
+        "title": "Python for Beginners — Full Course",
+        "url": "https://www.youtube.com/watch?v=eWRfhZUzrAc",
+        "type": "video",
+        "difficulty": "beginner",
+        "quality_score": 0.97,
+        "site": "YouTube (freeCodeCamp)",
+        "description": "4.5-hour complete Python beginner course — most watched Python tutorial on YouTube"
+      },
+      {
+        "id": "res_py_02",
+        "title": "Getting Started With Python — Real Python",
+        "url": "https://realpython.com/python-first-steps/",
+        "type": "article",
+        "difficulty": "beginner",
+        "quality_score": 0.94,
+        "site": "Real Python",
+        "description": "Written guide from absolute zero — installing Python, writing first script, understanding the REPL"
+      },
+      {
+        "id": "res_py_03",
+        "title": "Python Introduction — GeeksForGeeks",
+        "url": "https://www.geeksforgeeks.org/introduction-to-python/",
+        "type": "article",
+        "difficulty": "beginner",
+        "quality_score": 0.89,
+        "site": "GeeksForGeeks",
+        "description": "Overview of Python history, features, applications and first programs"
+      },
+      {
+        "id": "res_py_04",
+        "title": "Learn Python 3 — Codecademy",
+        "url": "https://www.codecademy.com/learn/learn-python-3",
+        "type": "practice",
+        "difficulty": "beginner",
+        "quality_score": 0.95,
+        "site": "Codecademy",
+        "description": "Browser-based interactive Python course — no installation needed, instant feedback"
+      },
+      {
+        "id": "res_py_05",
+        "title": "Introduction to Programming Using Python — Exercism",
+        "url": "https://exercism.org/tracks/python",
+        "type": "practice",
+        "difficulty": "beginner",
+        "quality_score": 0.92,
+        "site": "Exercism",
+        "description": "Structured Python exercises with community mentoring — free and beginner-friendly"
+      }
+    ]
+  },
+
+  "Basic Syntax": {
+    "topic_id": 103,
+    "subject": "Python Programming",
+    "resources": [
+      {
+        "id": "res_bs_01",
+        "title": "Python Syntax — Bro Code",
+        "url": "https://www.youtube.com/watch?v=kqtD5dpn9C8",
+        "type": "video",
+        "difficulty": "beginner",
+        "quality_score": 0.91,
+        "site": "YouTube (Bro Code)",
+        "description": "Covers indentation rules, comments, statements, colons — common beginner mistakes explained"
+      },
+      {
+        "id": "res_bs_02",
+        "title": "Python Syntax — W3Schools",
+        "url": "https://www.w3schools.com/python/python_syntax.asp",
+        "type": "article",
+        "difficulty": "beginner",
+        "quality_score": 0.89,
+        "site": "W3Schools",
+        "description": "Covers indentation, comments, and Python-specific syntax rules with live examples"
+      },
+      {
+        "id": "res_bs_03",
+        "title": "Python Syntax and Semantics — GeeksForGeeks",
+        "url": "https://www.geeksforgeeks.org/python-syntax/",
+        "type": "article",
+        "difficulty": "beginner",
+        "quality_score": 0.87,
+        "site": "GeeksForGeeks",
+        "description": "Detailed breakdown of Python syntax rules — indentation errors are the #1 mistake covered"
+      },
+      {
+        "id": "res_bs_04",
+        "title": "Python Syntax Exercises — W3Schools",
+        "url": "https://www.w3schools.com/python/exercise.asp?filename=exercise_syntax1",
+        "type": "practice",
+        "difficulty": "beginner",
+        "quality_score": 0.84,
+        "site": "W3Schools",
+        "description": "Quick fill-in exercises on Python syntax rules — good for self-checking"
+      },
+      {
+        "id": "res_bs_05",
+        "title": "Hello World — HackerRank Python",
+        "url": "https://www.hackerrank.com/domains/python",
+        "type": "practice",
+        "difficulty": "beginner",
+        "quality_score": 0.88,
+        "site": "HackerRank",
+        "description": "Entry-level Python domain — start from the very first syntax problems"
+      }
+    ]
+  },
+
+  "Variables": {
+    "topic_id": 104,
+    "subject": "Python Programming",
+    "resources": [
+      {
+        "id": "res_var_01",
+        "title": "Python Variables — Bro Code",
+        "url": "https://www.youtube.com/watch?v=cQT33yu9pY8",
+        "type": "video",
+        "difficulty": "beginner",
+        "quality_score": 0.93,
+        "site": "YouTube (Bro Code)",
+        "description": "15-minute video — variable naming, assignment, multiple assignment, swapping values"
+      },
+      {
+        "id": "res_var_02",
+        "title": "Python Variables — W3Schools",
+        "url": "https://www.w3schools.com/python/python_variables.asp",
+        "type": "article",
+        "difficulty": "beginner",
+        "quality_score": 0.90,
+        "site": "W3Schools",
+        "description": "Full variables reference — naming rules, global vs local, casting and type checking"
+      },
+      {
+        "id": "res_var_03",
+        "title": "Variables in Python — Real Python",
+        "url": "https://realpython.com/python-variables/",
+        "type": "article",
+        "difficulty": "beginner",
+        "quality_score": 0.94,
+        "site": "Real Python",
+        "description": "In-depth explanation of how Python variables actually work in memory — clears up common misconceptions"
+      },
+      {
+        "id": "res_var_04",
+        "title": "Python Variables Exercises — W3Schools",
+        "url": "https://www.w3schools.com/python/exercise.asp?filename=exercise_variables1",
+        "type": "practice",
+        "difficulty": "beginner",
+        "quality_score": 0.85,
+        "site": "W3Schools",
+        "description": "5 short exercises specifically on variable assignment and naming"
+      },
+      {
+        "id": "res_var_05",
+        "title": "Python — HackerRank Basic Data Types",
+        "url": "https://www.hackerrank.com/domains/python?filters%5Bsubdomains%5D%5B%5D=py-basic-data-types",
+        "type": "practice",
+        "difficulty": "beginner",
+        "quality_score": 0.86,
+        "site": "HackerRank",
+        "description": "Practice problems on variables and data types with auto-grading"
+      }
+    ]
+  },
+
+  "Data Types": {
+    "topic_id": 105,
+    "subject": "Python Programming",
+    "resources": [
+      {
+        "id": "res_dt_01",
+        "title": "Python Data Types — Corey Schafer",
+        "url": "https://www.youtube.com/watch?v=khKv-8q7YmY",
+        "type": "video",
+        "difficulty": "beginner",
+        "quality_score": 0.95,
+        "site": "YouTube (Corey Schafer)",
+        "description": "Covers int, float, str, bool, list, tuple, dict, set with practical examples — most recommended beginner series"
+      },
+      {
+        "id": "res_dt_02",
+        "title": "Python Data Types — W3Schools",
+        "url": "https://www.w3schools.com/python/python_datatypes.asp",
+        "type": "article",
+        "difficulty": "beginner",
+        "quality_score": 0.90,
+        "site": "W3Schools",
+        "description": "Visual overview of all Python built-in data types with type() examples"
+      },
+      {
+        "id": "res_dt_03",
+        "title": "Python Data Types — GeeksForGeeks",
+        "url": "https://www.geeksforgeeks.org/python-data-types/",
+        "type": "article",
+        "difficulty": "beginner",
+        "quality_score": 0.88,
+        "site": "GeeksForGeeks",
+        "description": "Detailed breakdown of mutable vs immutable types — key concept for exams and interviews"
+      },
+      {
+        "id": "res_dt_04",
+        "title": "Data Types Practice — W3Schools Exercises",
+        "url": "https://www.w3schools.com/python/exercise.asp?filename=exercise_datatypes1",
+        "type": "practice",
+        "difficulty": "beginner",
+        "quality_score": 0.84,
+        "site": "W3Schools",
+        "description": "Fill-in-the-blank exercises testing knowledge of each Python data type"
+      },
+      {
+        "id": "res_dt_05",
+        "title": "Python Data Types — Programiz Quiz",
+        "url": "https://www.programiz.com/python-programming/quiz",
+        "type": "practice",
+        "difficulty": "beginner",
+        "quality_score": 0.83,
+        "site": "Programiz",
+        "description": "Short quiz on Python fundamentals including data types — instant scoring"
+      }
+    ]
+  },
+
+  "if_statements": {
+    "topic_id": 106,
+    "subject": "Python Programming",
+    "resources": [
+      {
+        "id": "res_if_01",
+        "title": "Python If Elif Else — Bro Code",
+        "url": "https://www.youtube.com/watch?v=Zp5MuPOtsSY",
+        "type": "video",
+        "difficulty": "beginner",
+        "quality_score": 0.94,
+        "site": "YouTube (Bro Code)",
+        "description": "Covers if, elif, else, nested conditions, and real-world examples like grade calculators"
+      },
+      {
+        "id": "res_if_02",
+        "title": "Python Conditions — W3Schools",
+        "url": "https://www.w3schools.com/python/python_conditions.asp",
+        "type": "article",
+        "difficulty": "beginner",
+        "quality_score": 0.90,
+        "site": "W3Schools",
+        "description": "Full if/elif/else reference with shorthand (ternary) and nested condition examples"
+      },
+      {
+        "id": "res_if_03",
+        "title": "Python If Statements — Real Python",
+        "url": "https://realpython.com/python-conditional-statements/",
+        "type": "article",
+        "difficulty": "beginner",
+        "quality_score": 0.93,
+        "site": "Real Python",
+        "description": "Thorough article on conditional logic including truthy/falsy values — clears up the most common mistakes"
+      },
+      {
+        "id": "res_if_04",
+        "title": "Conditional Statements — Exercism",
+        "url": "https://exercism.org/tracks/python/exercises/bob",
+        "type": "practice",
+        "difficulty": "beginner",
+        "quality_score": 0.91,
+        "site": "Exercism",
+        "description": "Classic 'Bob' exercise — requires chained if/elif conditions, great for beginner practice"
+      },
+      {
+        "id": "res_if_05",
+        "title": "Python If Else Exercises — W3Schools",
+        "url": "https://www.w3schools.com/python/exercise.asp?filename=exercise_ifelse1",
+        "type": "practice",
+        "difficulty": "beginner",
+        "quality_score": 0.85,
+        "site": "W3Schools",
+        "description": "5 exercises testing if/else/elif logic with instant browser feedback"
+      }
+    ]
+  },
+
+  "Functions": {
+    "topic_id": 107,
+    "subject": "Python Programming",
+    "resources": [
+      {
+        "id": "res_fn_01",
+        "title": "Python Functions — Corey Schafer",
+        "url": "https://www.youtube.com/watch?v=9Os0o3wzS_I",
+        "type": "video",
+        "difficulty": "beginner",
+        "quality_score": 0.96,
+        "site": "YouTube (Corey Schafer)",
+        "description": "Covers defining functions, parameters, return values, *args, **kwargs and scope — best Python tutorial series"
+      },
+      {
+        "id": "res_fn_02",
+        "title": "Defining Your Own Python Function — Real Python",
+        "url": "https://realpython.com/defining-your-own-python-function/",
+        "type": "article",
+        "difficulty": "beginner",
+        "quality_score": 0.94,
+        "site": "Real Python",
+        "description": "Detailed guide from basic def syntax to default arguments and docstrings"
+      },
+      {
+        "id": "res_fn_03",
+        "title": "Python Functions — GeeksForGeeks",
+        "url": "https://www.geeksforgeeks.org/python-functions/",
+        "type": "article",
+        "difficulty": "beginner",
+        "quality_score": 0.89,
+        "site": "GeeksForGeeks",
+        "description": "Covers all function types — regular, lambda, recursive, with and without return values"
+      },
+      {
+        "id": "res_fn_04",
+        "title": "Write a Function — HackerRank",
+        "url": "https://www.hackerrank.com/challenges/write-a-function/problem",
+        "type": "practice",
+        "difficulty": "beginner",
+        "quality_score": 0.90,
+        "site": "HackerRank",
+        "description": "Practice writing and calling functions — auto-graded with test cases"
+      },
+      {
+        "id": "res_fn_05",
+        "title": "Python Functions Exercises — W3Schools",
+        "url": "https://www.w3schools.com/python/exercise.asp?filename=exercise_functions1",
+        "type": "practice",
+        "difficulty": "beginner",
+        "quality_score": 0.86,
+        "site": "W3Schools",
+        "description": "Short hands-on exercises covering function definition, parameters and return"
+      }
+    ]
+  },
+
+  "Control Structures": {
+    "topic_id": 108,
+    "subject": "Python Programming",
+    "resources": [
+      {
+        "id": "res_ctrl_01",
+        "title": "Python Loops — For and While — Bro Code",
+        "url": "https://www.youtube.com/watch?v=OnDr4J2UXSA",
+        "type": "video",
+        "difficulty": "beginner",
+        "quality_score": 0.93,
+        "site": "YouTube (Bro Code)",
+        "description": "Complete coverage of for loops, while loops, break, continue and range() with clear examples"
+      },
+      {
+        "id": "res_ctrl_02",
+        "title": "Python Loops — W3Schools",
+        "url": "https://www.w3schools.com/python/python_for_loops.asp",
+        "type": "article",
+        "difficulty": "beginner",
+        "quality_score": 0.89,
+        "site": "W3Schools",
+        "description": "for loops, while loops, nested loops, break, continue and pass — all on one page"
+      },
+      {
+        "id": "res_ctrl_03",
+        "title": "Control Flow in Python — Real Python",
+        "url": "https://realpython.com/python-for-loop/",
+        "type": "article",
+        "difficulty": "beginner",
+        "quality_score": 0.92,
+        "site": "Real Python",
+        "description": "In-depth guide to for loops, iterables, range() and enumerate() — clears up the most common confusion"
+      },
+      {
+        "id": "res_ctrl_04",
+        "title": "Loops Practice — HackerRank Python",
+        "url": "https://www.hackerrank.com/challenges/python-loops/problem",
+        "type": "practice",
+        "difficulty": "beginner",
+        "quality_score": 0.91,
+        "site": "HackerRank",
+        "description": "Auto-graded loop problems — starts easy and gets harder progressively"
+      },
+      {
+        "id": "res_ctrl_05",
+        "title": "Collatz Conjecture — Exercism",
+        "url": "https://exercism.org/tracks/python/exercises/collatz-conjecture",
+        "type": "practice",
+        "difficulty": "beginner",
+        "quality_score": 0.88,
+        "site": "Exercism",
+        "description": "Classic loop exercise — implement the Collatz sequence using while loop logic"
+      }
+    ]
+  },
+
+  "Arrays": {
+    "topic_id": 109,
+    "subject": "Python Programming",
+    "resources": [
+      {
+        "id": "res_arr_01",
+        "title": "Python Lists (Arrays) — Corey Schafer",
+        "url": "https://www.youtube.com/watch?v=W8KRzm-HUcc",
+        "type": "video",
+        "difficulty": "beginner",
+        "quality_score": 0.95,
+        "site": "YouTube (Corey Schafer)",
+        "description": "Covers list creation, indexing, slicing, append, remove, sort and list comprehensions"
+      },
+      {
+        "id": "res_arr_02",
+        "title": "Python Lists — W3Schools",
+        "url": "https://www.w3schools.com/python/python_lists.asp",
+        "type": "article",
+        "difficulty": "beginner",
+        "quality_score": 0.90,
+        "site": "W3Schools",
+        "description": "Complete list reference — indexing, slicing, methods, comprehensions and nested lists"
+      },
+      {
+        "id": "res_arr_03",
+        "title": "Python Lists — GeeksForGeeks",
+        "url": "https://www.geeksforgeeks.org/python-lists/",
+        "type": "article",
+        "difficulty": "beginner",
+        "quality_score": 0.88,
+        "site": "GeeksForGeeks",
+        "description": "Detailed article on lists as dynamic arrays — covers time complexity of list operations"
+      },
+      {
+        "id": "res_arr_04",
+        "title": "Array Problems — LeetCode Easy",
+        "url": "https://leetcode.com/tag/array/?difficulty=EASY",
+        "type": "practice",
+        "difficulty": "beginner",
+        "quality_score": 0.92,
+        "site": "LeetCode",
+        "description": "Filtered easy array problems on LeetCode — best platform for interview-style practice"
+      },
+      {
+        "id": "res_arr_05",
+        "title": "Python List Exercises — W3Schools",
+        "url": "https://www.w3schools.com/python/exercise.asp?filename=exercise_lists1",
+        "type": "practice",
+        "difficulty": "beginner",
+        "quality_score": 0.85,
+        "site": "W3Schools",
+        "description": "Hands-on list exercises with instant feedback — covers indexing, sorting and methods"
+      }
+    ]
+  }
+}   

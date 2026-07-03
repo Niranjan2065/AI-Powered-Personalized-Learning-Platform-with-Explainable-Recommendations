@@ -443,15 +443,28 @@ exports.submitAttempt = async (req, res) => {
     }
   } catch { /* non-critical */ }
 
-  // ── Fire-and-forget: forgetting curve + recommendations ──────────────────
-  // Both run in the background so the quiz response is never delayed.
+  // ── Build topicPerformance for the response ───────────────────────────────
+  // QuizResultPage needs per-topic correct/total/percentage to render the
+  // weak/average/strong topic breakdown. scoreAttempt() already groups
+  // weakTopics/strongTopics by name but not by raw correct/total counts,
+  // so we recompute it here from scoredAnswers.
+  const topicPerformance = {};
+  for (const ans of scoredAnswers) {
+    const topics = ans.topics?.length ? ans.topics : (ans.topic ? [ans.topic] : []);
+    for (const t of topics) {
+      if (!topicPerformance[t]) topicPerformance[t] = { correct: 0, total: 0 };
+      topicPerformance[t].total += 1;
+      if (ans.isCorrect) topicPerformance[t].correct += 1;
+    }
+  }
+  for (const t of Object.keys(topicPerformance)) {
+    const { correct, total } = topicPerformance[t];
+    topicPerformance[t].percentage = total > 0 ? Math.round((correct / total) * 100) : 0;
+  }
+
+  // ── Forgetting curve — fire-and-forget (fast, non-blocking) ──────────────
   setImmediate(async () => {
     try {
-      // 1. Update spaced-repetition schedule for this lesson
-      //    quiz.lesson is the ObjectId of the lesson this quiz belongs to.
-      //    quiz.course is the course ObjectId.
-      //    moduleId is not directly on the quiz — forgettingCurve.js looks it up
-      //    from the Lesson document automatically when moduleId is null.
       if (quiz.lesson) {
         await updateReviewSchedule(
           req.user._id,   // studentId
@@ -461,22 +474,38 @@ exports.submitAttempt = async (req, res) => {
           score           // quiz score 0-100
         );
       }
-
-      // 2. Regenerate AI recommendations (existing behaviour — unchanged)
-      await generateRecommendationsForStudent(req.user._id);
-
     } catch (err) {
-      console.error('[SR] forgettingCurve or regen error (non-critical):', err.message);
+      console.error('[SR] forgettingCurve error (non-critical):', err.message);
     }
   });
+
+  // ── Recommendations + SHAP — AWAITED so the response can include the ─────
+  // explanation immediately. This is what QuizResultPage's ShapExplanationPanel
+  // reads. Previously this ran fire-and-forget and its result was discarded,
+  // so the student never saw a SHAP explanation on the result screen — they
+  // only saw it later if they separately visited /recommendations.
+  let shapExplanation = null;
+  try {
+    const recommendation = await generateRecommendationsForStudent(req.user._id);
+    shapExplanation = recommendation?.analysisSummary?.shapExplanation || null;
+  } catch (err) {
+    // Non-critical — quiz result still returns successfully without SHAP data
+    console.error('[Recommendations] generation error (non-critical):', err.message);
+  }
 
   res.status(201).json({
     success: true,
     message: isPassed ? 'Congratulations, you passed!' : 'Quiz submitted.',
     data: {
-      score, pointsEarned, totalPoints, isPassed, attemptNumber,
+      score,
+      scorePercentage: score,   // alias — QuizResultPage reads either name
+      pointsEarned, totalPoints, isPassed, attemptNumber,
       weakTopics, strongTopics, answers: scoredAnswers,
+      topicPerformance,
+      lessonId: quiz.lesson || null,
+      courseId: quiz.course || null,
       recommendationsUpdated: true,
+      analysisSummary: shapExplanation ? { shapExplanation } : null,
       softBlock: req.softBlock || null,
     },
   });
