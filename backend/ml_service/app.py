@@ -68,7 +68,15 @@ from ai_engine.src.generate_reason import generate_xai_reason
 # ── App setup ─────────────────────────────────────────────────────────────────
 
 app = Flask(__name__)
-CORS(app)
+
+# This service is internal-only — the Node backend is its sole caller
+# (see backend/services/mlBridgeService.js), never a browser directly.
+# CORS is restricted to ML_ALLOWED_ORIGIN (defaults to the Node backend's
+# own origin) instead of left open to any site, since an open CORS policy
+# on an endpoint that returns raw student performance data is a real
+# data-exposure risk even though X-ML-Secret still gates most routes.
+ML_ALLOWED_ORIGIN = os.environ.get('ML_ALLOWED_ORIGIN', 'http://localhost:5000')
+CORS(app, origins=[ML_ALLOWED_ORIGIN])
 
 # ── Shared-secret auth ────────────────────────────────────────────────────────
 # Protects expensive/sensitive endpoints (model retraining, student data reads)
@@ -370,7 +378,15 @@ def topic_resources(topic_id):
 # ── Entry point ───────────────────────────────────────────────────────────────
 
 if __name__ == '__main__':
-    port  = int(os.environ.get('ML_PORT', 5001))
-    debug = os.environ.get('FLASK_ENV', 'development') == 'development'
+    port = int(os.environ.get('ML_PORT', 5001))
+    # Fail-safe default: debug mode (which exposes the Werkzeug debugger —
+    # arbitrary code execution — on any error page) only turns on when
+    # FLASK_ENV is explicitly set to 'development'. Previously this
+    # defaulted to development/debug=True whenever FLASK_ENV was unset,
+    # which is exactly the state an unconfigured deploy would be in.
+    debug = os.environ.get('FLASK_ENV') == 'development'
+    if not debug:
+        print('[ML Service] Running in production mode (debug=False). '
+              'Set FLASK_ENV=development for local debugging.')
     print(f'[ML Service] Starting on http://localhost:{port}')
     app.run(host='0.0.0.0', port=port, debug=debug)
