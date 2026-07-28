@@ -565,6 +565,64 @@ exports.getQuizzesByCourse = async (req, res) => {
 };
 
 // ─────────────────────────────────────────────────────────────
+// GET /api/quizzes/analytics/course/:courseId/trend
+// Returns daily average score over the last 30 days
+// ─────────────────────────────────────────────────────────────
+exports.getCourseScoreTrend = async (req, res) => {
+  const { courseId } = req.params;
+  const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+
+  const attempts = await QuizAttempt.find({
+    course: courseId,
+    createdAt: { $gte: since },
+  }).select('score createdAt').lean();
+
+  // Group by day
+  const byDay = {};
+  for (const a of attempts) {
+    const day = a.createdAt.toISOString().slice(0, 10); // "YYYY-MM-DD"
+    if (!byDay[day]) byDay[day] = { total: 0, count: 0 };
+    byDay[day].total += a.score;
+    byDay[day].count += 1;
+  }
+
+  const trend = Object.entries(byDay)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([date, { total, count }]) => ({
+      date,
+      label: new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+      avgScore: Math.round(total / count),
+      attempts: count,
+    }));
+
+  res.json({ success: true, data: trend });
+};
+
+// ─────────────────────────────────────────────────────────────
+// GET /api/quizzes/analytics/course/:courseId/distribution
+// Returns score distribution in buckets: 0-20, 20-40, ..., 80-100
+// ─────────────────────────────────────────────────────────────
+exports.getCourseScoreDistribution = async (req, res) => {
+  const { courseId } = req.params;
+  const attempts = await QuizAttempt.find({ course: courseId }).select('score').lean();
+
+  const buckets = [
+    { label: '0-20',  min: 0,  max: 20,  count: 0 },
+    { label: '21-40', min: 21, max: 40,  count: 0 },
+    { label: '41-60', min: 41, max: 60,  count: 0 },
+    { label: '61-80', min: 61, max: 80,  count: 0 },
+    { label: '81-100',min: 81, max: 100, count: 0 },
+  ];
+
+  for (const a of attempts) {
+    const bucket = buckets.find(b => a.score >= b.min && a.score <= b.max);
+    if (bucket) bucket.count++;
+  }
+
+  res.json({ success: true, data: buckets });
+};
+
+// ─────────────────────────────────────────────────────────────
 // POST /api/quizzes/:id/violation
 // ─────────────────────────────────────────────────────────────
 exports.logViolation = async (req, res) => {

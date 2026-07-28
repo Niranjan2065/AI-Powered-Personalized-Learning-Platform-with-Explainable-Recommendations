@@ -1,0 +1,26 @@
+[
+  {
+    "K": 3,
+    "Precision@K": 0.1313,
+    "Recall@K": 0.3939,
+    "HitRate@K": 0.3939,
+    "NDCG@K": 0.3044,
+    "n_students_evaluated": 165
+  },
+  {
+    "K": 5,
+    "Precision@K": 0.1152,
+    "Recall@K": 0.5758,
+    "HitRate@K": 0.5758,
+    "NDCG@K": 0.3787,
+    "n_students_evaluated": 165
+  },
+  {
+    "K": 10,
+    "Precision@K": 0.0848,
+    "Recall@K": 0.8485,
+    "HitRate@K": 0.8485,
+    "NDCG@K": 0.4675,
+    "n_students_evaluated": 165
+  }
+]

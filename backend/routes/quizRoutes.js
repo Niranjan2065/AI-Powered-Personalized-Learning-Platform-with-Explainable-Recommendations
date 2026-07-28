@@ -21,6 +21,8 @@ const {
   getAttempts,
   getMyAttempts,
   getCourseAnalytics,
+  getCourseScoreTrend,
+  getCourseScoreDistribution,
   logViolation,
 } = require('../controllers/quizController');
 
@@ -40,7 +42,9 @@ router.post('/generate-from-pdf',protect, authorize('tutor', 'admin'), aiLimiter
 router.post('/save-generated',   protect, authorize('tutor', 'admin'), saveGeneratedQuiz);
 
 // ANALYTICS
-router.get('/analytics/course/:courseId', protect, authorize('tutor', 'admin'), getCourseAnalytics);
+router.get('/analytics/course/:courseId',              protect, authorize('tutor', 'admin'), getCourseAnalytics);
+router.get('/analytics/course/:courseId/trend',        protect, authorize('tutor', 'admin'), getCourseScoreTrend);
+router.get('/analytics/course/:courseId/distribution', protect, authorize('tutor', 'admin'), getCourseScoreDistribution);
 
 // COURSE QUIZZES (for QuizListPage)
 router.get('/course/:courseId', protect, getQuizzesByCourse);
