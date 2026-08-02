@@ -12,6 +12,8 @@ import numpy as np
 import pickle
 import os
 
+from .feature_config import FEATURE_COLS
+
 BASE_DIR   = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PROC_DIR   = os.path.join(BASE_DIR, "data", "processed")
 MODELS_DIR = os.path.join(BASE_DIR, "models")
@@ -21,16 +23,6 @@ STM_PATH       = os.path.join(MODELS_DIR, "student_topic_matrix.csv")
 KMEANS_PATH    = os.path.join(MODELS_DIR, "kmeans.pkl")
 CF_MODEL_PATH  = os.path.join(MODELS_DIR, "cf_model.pkl")
 SCALER_PATH    = os.path.join(MODELS_DIR, "scaler.pkl")
-
-FEATURE_COLS = [
-    "avg_quiz_score",
-    "avg_time_spent",
-    "total_errors",
-    "avg_accuracy",
-    "avg_time_efficiency",
-    "struggle_topics",
-    "topics_attempted",
-]
 
 _cache = {}
 

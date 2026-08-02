@@ -23,21 +23,14 @@ import os
 import json
 from scipy.stats import spearmanr
 
+from .feature_config import FEATURE_COLS, FEATURE_LABELS
+
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PROC_DIR = os.path.join(BASE_DIR, "data", "processed")
 MODELS_DIR = os.path.join(BASE_DIR, "models")
 
 CLUSTERED_PATH = os.path.join(PROC_DIR, "student_features_clustered.csv")
 KMEANS_PATH = os.path.join(MODELS_DIR, "kmeans.pkl")
-
-FEATURE_COLS = [
-    "avg_quiz_score", "avg_time_spent", "total_errors",
-    "avg_accuracy", "avg_time_efficiency", "struggle_topics", "topics_attempted",
-]
-FEATURE_LABELS = [
-    "Quiz score average", "Time spent average", "Total errors",
-    "Accuracy rate", "Time efficiency", "Struggling topics", "Topics attempted",
-]
 
 SAMPLE_SIZE = 20
 SEED = 42

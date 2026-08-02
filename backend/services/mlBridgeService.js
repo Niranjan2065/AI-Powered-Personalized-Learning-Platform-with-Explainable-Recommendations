@@ -8,7 +8,10 @@
  *   • Node built-in `fs`, `path`       (instead of fast-csv)
  *
  * Responsibilities:
- *  1. Export quiz interaction data from MongoDB → CSV
+ *  1. Export quiz interaction data from MongoDB → CSV, folding in student
+ *     thumbs-up/down feedback (as a score adjustment) and recency
+ *     (days_since_activity, for the Ebbinghaus retention feature) so the
+ *     Python model actually learns from both signals on the next retrain
  *  2. Call POST /ml/train  — retrain KMeans + CF models
  *  3. Call GET  /ml/recommend/:numericId — ML recs + SHAP
  *  4. Map MongoDB ObjectIds ↔ numeric ids used by Python
@@ -21,9 +24,10 @@ const https = require('https');
 const path  = require('path');
 const fs    = require('fs');
 
-const QuizAttempt = require('../models/QuizAttempt');
-const Enrollment  = require('../models/Enrollment');
-const Progress    = require('../models/Progress');
+const QuizAttempt            = require('../models/QuizAttempt');
+const Enrollment             = require('../models/Enrollment');
+const Progress                = require('../models/Progress');
+const RecommendationFeedback = require('../models/RecommendationFeedback');
 
 // ── Config ────────────────────────────────────────────────────────────────────
 const ML_BASE_URL  = process.env.ML_SERVICE_URL || 'http://localhost:5001';
@@ -129,6 +133,60 @@ function writeCSV(filePath, rows, headers) {
   fs.writeFileSync(filePath, lines.join('\n'), 'utf8');
 }
 
+// ── Feedback → implicit relevance signal (recommendation-improvement #1) ─────
+// Student thumbs-up/down feedback previously only reweighted the JS
+// rule-based engine at request time (see recommendationEngine.applyFeedbackWeights)
+// and never touched the Python CF/KMeans training data at all — a student
+// could downvote a topic every day and the ML model would never learn from
+// it. This pulls that same signal into the exported training rows, so the
+// next scheduled retrain (server.js runMLRetrain) actually learns from it.
+//
+// Returns a map of "<studentMongoId>:<topicName>" → a signed score shift in
+// roughly [-21, +21], mirroring the same weight formula feedbackController's
+// getFeedbackSummary already uses for the JS engine, so both systems treat
+// feedback consistently:
+//   thumbs_up / already_know → push the effective quiz_score UP  (student
+//                               engaged well / already knows this topic)
+//   thumbs_down / too_hard   → push the effective quiz_score DOWN (content
+//                               was rejected / mismatched their level)
+async function getFeedbackWeights() {
+  const rows = await RecommendationFeedback.aggregate([
+    { $group: {
+      _id: { student: '$student', topic: '$topic' },
+      thumbs_up:    { $sum: { $cond: [{ $eq: ['$signal', 'thumbs_up']    }, 1, 0] } },
+      thumbs_down:  { $sum: { $cond: [{ $eq: ['$signal', 'thumbs_down']  }, 1, 0] } },
+      already_know: { $sum: { $cond: [{ $eq: ['$signal', 'already_know'] }, 1, 0] } },
+      too_hard:     { $sum: { $cond: [{ $eq: ['$signal', 'too_hard']     }, 1, 0] } },
+    }},
+  ]);
+
+  const map = {};
+  for (const row of rows) {
+    const up    = row.thumbs_up   + row.already_know * 0.5;
+    const down  = row.thumbs_down + row.too_hard      * 0.5;
+    const total = up + down;
+    if (total === 0) continue;
+
+    // Same Bayesian-smoothed weight (0.3–1.7, neutral at 1.0) as
+    // feedbackController.getFeedbackSummary, converted to a +/-21 point
+    // additive shift on the 0-100 quiz_score scale instead of a multiplier —
+    // additive avoids zeroing out already-low scores for students who
+    // thumbs-down a weak topic (multiplying a low score by <1 would make
+    // it look like the student is doing *better*, which is backwards).
+    const weight = Math.max(0.3, Math.min(1.7, 1.0 + (up - down) / (total + 2)));
+    const key = `${row._id.student.toString()}:${row._id.topic}`;
+    map[key] = (weight - 1.0) * 30;
+  }
+  return map;
+}
+
+function applyFeedbackAdjustment(score, studentMongoId, topicName, feedbackWeights) {
+  const key   = `${studentMongoId}:${topicName}`;
+  const shift = feedbackWeights[key];
+  if (shift === undefined) return score;
+  return Math.max(0, Math.min(100, Math.round(score + shift)));
+}
+
 // ── Export interactions CSV ───────────────────────────────────────────────────
 async function exportInteractionsCSV() {
   const attempts = await QuizAttempt.find({})
@@ -136,6 +194,9 @@ async function exportInteractionsCSV() {
     .lean();
 
   if (!attempts.length) return { studentIdMap: {}, rowCount: 0 };
+
+  // Item #1: pull in feedback signal so retraining learns from thumbs up/down.
+  const feedbackWeights = await getFeedbackWeights();
 
   const idMap    = loadIdMap();
   const topicMap = {};
@@ -151,11 +212,18 @@ async function exportInteractionsCSV() {
 
   for (const attempt of attempts) {
     const numStudentId = getOrCreateNumericId(attempt.student.toString(), idMap);
+    const studentKey   = attempt.student.toString();
     const scorePercent = attempt.score || 0;
     const timeSpent    = attempt.timeTaken ? Math.round(attempt.timeTaken / 60) : 10;
     const errorCount   = attempt.answers
       ? attempt.answers.filter(a => !a.isCorrect).length
       : 0;
+
+    // Item #3: recency, in whole days since this attempt — the raw input
+    // for the Ebbinghaus retention-score feature computed in
+    // ai_engine/src/preprocessing.py (engineer_features).
+    const attemptDate = attempt.createdAt ? new Date(attempt.createdAt) : new Date();
+    const daysSince    = Math.max(0, Math.floor((Date.now() - attemptDate.getTime()) / 86_400_000));
 
     const weakTopics   = attempt.weakTopics   || [];
     const strongTopics = attempt.strongTopics || [];
@@ -163,13 +231,15 @@ async function exportInteractionsCSV() {
     const allTopics    = [...new Set([...weakTopics, ...strongTopics, ...quizTopics])];
 
     if (allTopics.length === 0) {
+      const adjustedScore = applyFeedbackAdjustment(scorePercent, studentKey, 'general', feedbackWeights);
       rows.push({
-        student_id:         numStudentId,
-        topic_id:           topicId('general'),
-        quiz_score:         scorePercent,
-        time_spent_minutes: timeSpent,
-        error_count:        errorCount,
-        attempts:           attempt.attemptNumber || 1,
+        student_id:          numStudentId,
+        topic_id:            topicId('general'),
+        quiz_score:          adjustedScore,
+        time_spent_minutes:  timeSpent,
+        error_count:         errorCount,
+        attempts:            attempt.attemptNumber || 1,
+        days_since_activity: daysSince,
       });
     } else {
       for (const topic of allTopics) {
@@ -177,14 +247,16 @@ async function exportInteractionsCSV() {
         const topicScore = isWeak
           ? Math.min(scorePercent, 55)
           : Math.max(scorePercent, 70);
+        const adjustedScore = applyFeedbackAdjustment(topicScore, studentKey, topic, feedbackWeights);
 
         rows.push({
-          student_id:         numStudentId,
-          topic_id:           topicId(topic),
-          quiz_score:         topicScore,
-          time_spent_minutes: timeSpent,
-          error_count:        isWeak ? errorCount : Math.max(0, errorCount - 2),
-          attempts:           attempt.attemptNumber || 1,
+          student_id:          numStudentId,
+          topic_id:            topicId(topic),
+          quiz_score:          adjustedScore,
+          time_spent_minutes:  timeSpent,
+          error_count:         isWeak ? errorCount : Math.max(0, errorCount - 2),
+          attempts:            attempt.attemptNumber || 1,
+          days_since_activity: daysSince,
         });
       }
     }
@@ -196,7 +268,7 @@ async function exportInteractionsCSV() {
   fs.writeFileSync(topicMapPath, JSON.stringify(topicMap, null, 2));
   saveIdMap(idMap);
 
-  const headers = ['student_id', 'topic_id', 'quiz_score', 'time_spent_minutes', 'error_count', 'attempts'];
+  const headers = ['student_id', 'topic_id', 'quiz_score', 'time_spent_minutes', 'error_count', 'attempts', 'days_since_activity'];
   writeCSV(path.join(DATA_DIR, 'interactions.csv'), rows, headers);
 
   console.log(`[ML Bridge] Exported ${rows.length} rows → interactions.csv`);

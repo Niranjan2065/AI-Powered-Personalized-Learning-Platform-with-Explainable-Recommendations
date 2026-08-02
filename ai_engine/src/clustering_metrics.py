@@ -13,18 +13,10 @@ from sklearn.metrics import silhouette_score, davies_bouldin_score, calinski_har
 import os
 import json
 
+from .feature_config import FEATURE_COLS
+
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FEATURES_PATH = os.path.join(BASE_DIR, "data", "processed", "student_features.csv")
-
-FEATURE_COLS = [
-    "avg_quiz_score",
-    "avg_time_spent",
-    "total_errors",
-    "avg_accuracy",
-    "avg_time_efficiency",
-    "struggle_topics",
-    "topics_attempted",
-]
 
 
 def evaluate_k_range(X, k_min=2, k_max=7, seed=42):

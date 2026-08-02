@@ -289,11 +289,68 @@ function getProgressionLevel(topicScore) {
   return 'remedial';
 }
 
+// ---------------------------------------------------------------------------
+// Diversity re-ranking (recommendation-improvement item #2)
+// ---------------------------------------------------------------------------
+// Problem: the ML/rule-based item pool is currently sorted by priority alone
+// (recommendationController: `[...mlItems].sort((a,b) => b.priority - a.priority)`).
+// Because lesson lookups query up to 20 lessons matching the student's
+// weak/recommended topics, several of the highest-priority items can easily
+// all address the SAME topic — crowding the final top-N list and burying
+// the student's other weak spots even though they were detected.
+//
+// diversifyRecommendations() keeps the same priority ordering but caps how
+// many items in a row can address the same topic, so a student with 4 weak
+// topics is shown a spread across those 4 instead of 4 lessons on the single
+// worst one. Items that would exceed the cap aren't dropped — they're kept
+// as an overflow pool and used to fill any remaining slots only after every
+// topic has had its fair turn, so nothing is lost if there simply isn't
+// enough topic variety to fill the list otherwise.
+//
+// @param {Array}  items        - recommendation items, each with .priority and .addressesTopic
+// @param {Object} opts
+// @param {number} opts.maxPerTopic - max items allowed per topic before overflow (default 2)
+// @param {number} [opts.limit]     - trim the final list to this many items
+// @returns {Array} re-ranked (and optionally trimmed) items — does not mutate input
+function diversifyRecommendations(items, { maxPerTopic = 2, limit } = {}) {
+  if (!Array.isArray(items) || items.length === 0) return [];
+
+  const sorted = [...items].sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
+  const topicCounts = {};
+  const picked   = [];
+  const overflow = [];
+
+  for (const item of sorted) {
+    const topic = item.addressesTopic || 'general';
+    const count = topicCounts[topic] || 0;
+    if (count < maxPerTopic) {
+      picked.push(item);
+      topicCounts[topic] = count + 1;
+    } else {
+      overflow.push(item);
+    }
+    if (limit != null && picked.length >= limit) return picked;
+  }
+
+  // Fewer distinct topics than slots available — fill the rest from
+  // overflow (still priority-ordered) rather than under-filling the list.
+  if (limit != null) {
+    for (const item of overflow) {
+      if (picked.length >= limit) break;
+      picked.push(item);
+    }
+    return picked;
+  }
+
+  return [...picked, ...overflow];
+}
+
 module.exports = {
   resolveScore,
   aggregateTopicPerformance,
   buildRecommendations,
   applyFeedbackWeights,
   getProgressionLevel,
+  diversifyRecommendations,
   MIN_QUIZ_DATA_POINTS,
 };

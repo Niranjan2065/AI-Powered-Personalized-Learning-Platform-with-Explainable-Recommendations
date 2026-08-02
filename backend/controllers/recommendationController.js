@@ -13,6 +13,7 @@ const {
   generateRecommendations: generateRuleBased,
   aggregateTopicPerformance,
   resolveScore,
+  diversifyRecommendations,
 } = require('../ai/recommendationEngine');
 
 const {
@@ -29,12 +30,17 @@ const {
 } = require('../services/mlBridgeService');
 
 const { sendRecommendationEmail } = require('../services/emailService');
+const { enhanceExplanations }     = require('../services/explanationService');
 
 const RECOMMENDATION_EXPIRY_DAYS = 7;
 const MAX_RECOMMENDATIONS        = 8;
 // Max slots reserved at the top of the list for "due for review" lessons.
 // Keeping this at 2 ensures new content still dominates the feed.
 const MAX_REVIEW_SLOTS           = 2;
+// Recommendation-improvement item #2: cap how many of the final ML/rule-based
+// slots can address the same topic, so one dominant weak topic can't crowd
+// out the student's other weak spots. See diversifyRecommendations().
+const MAX_PER_TOPIC              = 2;
 
 // ---------------------------------------------------------------------------
 // getLatestRecommendation — local DB lookup (not from recommendationEngine)
@@ -235,6 +241,13 @@ async function buildRecommendationFromML(studentId, mlData) {
   // ── ML lesson items ───────────────────────────────────────────────────────
   const mlItems = [];
 
+  // Computed once — shapContribs doesn't change per lesson, so recomputing
+  // this inside the loop below was redundant work done on every iteration.
+  const shapContribs        = explanation.shap_contributions || {};
+  const topShapFeatureGlobal = Object.keys(shapContribs).sort(
+    (a, b) => Math.abs(shapContribs[b]) - Math.abs(shapContribs[a])
+  )[0];
+
   if (targetTopics.length > 0) {
     const lessons = await Lesson.find({
       course: { $in: courseIds }, topics: { $in: targetTopics }, isPublished: true,
@@ -253,10 +266,7 @@ async function buildRecommendationFromML(studentId, mlData) {
       const topicScore   = pct(topicStats[primaryTopic]) ?? 50;
       const confidence   = Math.min(99, Math.round(100 - topicScore + coveredWeak.length * 5));
 
-      const shapContribs   = explanation.shap_contributions || {};
-      const topShapFeature = Object.keys(shapContribs).sort(
-        (a, b) => Math.abs(shapContribs[b]) - Math.abs(shapContribs[a])
-      )[0];
+      const topShapFeature = topShapFeatureGlobal;
 
       let xaiExplanation;
       if (explanation.human_readable && !explanation.human_readable.toLowerCase().includes('cluster 0')) {
@@ -333,10 +343,34 @@ async function buildRecommendationFromML(studentId, mlData) {
     }
   }
 
+  // ── Item #4: upgrade templated explanations to natural language ──────────
+  // One batched Groq call for the whole set (not per-item) — see
+  // services/explanationService.js for the grounding rules and fallback
+  // behavior. If this fails for any reason, mlItems keep their original
+  // templated `.explanation` text untouched, so a flaky LLM call can never
+  // break recommendation generation.
+  const explanationInputs = mlItems.map(item => ({
+    topic:               item.addressesTopic,
+    topicScore:          pct(topicStats[item.addressesTopic]) ?? null,
+    cluster,
+    topShapFeature:      topShapFeatureGlobal,
+    templateExplanation: item.explanation,
+  }));
+  const enhancedExplanations = await enhanceExplanations(explanationInputs);
+  mlItems.forEach((item, i) => { item.explanation = enhancedExplanations[i]; });
+
   // ── Merge: review items (priority 10) always sort above ML items ──────────
-  const allItems = [...reviewItems, ...mlItems]
-    .sort((a, b) => b.priority - a.priority)
-    .slice(0, MAX_RECOMMENDATIONS);
+  // Review items keep their reserved slots as-is (already capped to
+  // MAX_REVIEW_SLOTS and inherently topic-varied — spaced repetition only
+  // resurfaces one lesson per overdue topic). Diversity re-ranking applies
+  // to the ML/rule-based pool, which is where topic-crowding actually
+  // happens (see diversifyRecommendations doc comment in recommendationEngine.js).
+  const remainingSlots     = Math.max(0, MAX_RECOMMENDATIONS - reviewItems.length);
+  const diversifiedMlItems = diversifyRecommendations(mlItems, {
+    maxPerTopic: MAX_PER_TOPIC,
+    limit:       remainingSlots,
+  });
+  const allItems = [...reviewItems, ...diversifiedMlItems];
 
   const detectedLevel =
     overallScore >= 80 && weakTopicsSummary.length === 0 ? 'advanced'

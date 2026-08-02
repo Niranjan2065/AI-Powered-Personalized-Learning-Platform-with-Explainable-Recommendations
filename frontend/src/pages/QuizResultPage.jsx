@@ -26,8 +26,18 @@
 
 import React, { useState, useEffect } from 'react';
 import { useLocation, useNavigate, Link } from 'react-router-dom';
+import { IoVideocamOutline, IoDocumentTextOutline, IoCodeSlashOutline, IoLinkOutline } from 'react-icons/io5';
+import axios from 'axios';
 import Navbar from '../components/common/Navbar';
 import AIChatTutor from '../components/student/AIChatTutor';
+import ResourceFeedbackButtons from '../components/recommendations/ResourceFeedbackButtons';
+
+const resourceFeedbackApi = axios.create({ baseURL: '/api' });
+resourceFeedbackApi.interceptors.request.use(c => {
+  const t = localStorage.getItem('token');
+  if (t) c.headers.Authorization = `Bearer ${t}`;
+  return c;
+});
 
 // ─────────────────────────────────────────────────────────────
 // Shared mini-components
@@ -226,6 +236,20 @@ function ShapExplanationPanel({ shapExplanation, topicName, score }) {
 // colour-coded rows — no extra API call needed.
 // ─────────────────────────────────────────────────────────────
 function WeakTopicsFromResult({ topicPerformance }) {
+  // Item #3: fetch the student's prior votes on curated resources once, so
+  // buttons reflect earlier feedback instead of resetting to "unvoted" on
+  // every page load/refresh. Hooks must run before the early-return guard
+  // below (Rules of Hooks) even though this effect is a no-op when there's
+  // nothing to show.
+  const [myVotes, setMyVotes] = useState({});
+  useEffect(() => {
+    let cancelled = false;
+    resourceFeedbackApi.get('/resource-feedback/mine')
+      .then(res => { if (!cancelled) setMyVotes(res.data?.data || {}); })
+      .catch(() => { /* non-critical — buttons just default to unvoted */ });
+    return () => { cancelled = true; };
+  }, []);
+
   if (!topicPerformance || !Object.keys(topicPerformance).length) return null;
 
   const entries = Object.entries(topicPerformance)
@@ -236,10 +260,19 @@ function WeakTopicsFromResult({ topicPerformance }) {
   const average = entries.filter(e => e.percentage >= 60 && e.percentage < 80);
   const strong  = entries.filter(e => e.percentage >= 80);
 
+  // Item #1: real icons instead of emoji glyphs (emoji rendering was
+  // inconsistent/tiny across OS font sets). react-icons/io5 is already an
+  // installed dependency — just not used elsewhere in this codebase yet.
+  const RESOURCE_TYPE_ICON = {
+    video:    <IoVideocamOutline size={14} />,
+    article:  <IoDocumentTextOutline size={14} />,
+    practice: <IoCodeSlashOutline size={14} />,
+  };
+
   const Section = ({ label, items, color, bg }) => items.length === 0 ? null : (
     <div style={{ marginBottom: '1rem' }}>
       <div style={{ fontSize: '.75rem', fontWeight: 700, color, marginBottom: '.5rem' }}>{label}</div>
-      {items.map(({ topic, percentage, correct, total }) => (
+      {items.map(({ topic, percentage, correct, total, resources }) => (
         <div key={topic} style={{ marginBottom: '.6rem' }}>
           <div style={{
             display: 'flex', justifyContent: 'space-between',
@@ -254,6 +287,57 @@ function WeakTopicsFromResult({ topicPerformance }) {
           {percentage < 60 && (
             <div style={{ fontSize: '.7rem', color: '#991B1B', marginTop: '.2rem' }}>
               ⚠️ Focus on this topic — below passing threshold
+            </div>
+          )}
+          {/* Curated external resources — supplements the lesson recs on the
+              Recommendations page, doesn't replace them. Only renders when
+              the backend found something in topic_resources.json for this
+              topic; older topics not yet in that file simply show nothing
+              here rather than an empty/broken section. */}
+          {resources?.length > 0 && (
+            <div style={{
+              marginTop: '.5rem', padding: '.6rem .7rem',
+              background: 'var(--bg)', border: '1px solid var(--border)',
+              borderRadius: 'var(--radius-sm)',
+            }}>
+              <div style={{ fontSize: '.7rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '.35rem' }}>
+                📚 You're weak in {topic} — check these out:
+              </div>
+              {resources.map(r => (
+                <div
+                  key={r.id}
+                  style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    gap: '.4rem', marginBottom: '.3rem',
+                  }}
+                >
+                  <a
+                    href={r.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: '.4rem',
+                      fontSize: '.78rem', color: 'var(--primary)',
+                      textDecoration: 'none', minWidth: 0,
+                    }}
+                  >
+                    <span style={{ display: 'flex', flexShrink: 0 }}>
+                      {RESOURCE_TYPE_ICON[r.type] || <IoLinkOutline size={14} />}
+                    </span>
+                    <span style={{ textDecoration: 'underline', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {r.title}
+                    </span>
+                    <span style={{ color: 'var(--text-muted)', fontSize: '.7rem', flexShrink: 0 }}>— {r.site}</span>
+                  </a>
+                  {/* Sits outside the <a> deliberately — voting shouldn't
+                      also trigger navigation to the external link. */}
+                  <ResourceFeedbackButtons
+                    resourceId={r.id}
+                    topic={topic}
+                    initialSignal={myVotes[r.id] || null}
+                  />
+                </div>
+              ))}
             </div>
           )}
         </div>

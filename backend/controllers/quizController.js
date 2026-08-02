@@ -7,6 +7,7 @@ const { generateQuestions }      = require('../services/aiQuizService');
 const { extractTextFromPdfPath } = require('../services/pdfExtractService');
 const { sendQuizResultEmail }    = require('../services/emailService');
 const { generateRecommendationsForStudent } = require('./recommendationController');
+const { getTopicResources } = require('../services/topicResourceService');
 
 // NEW: forgetting curve scheduler
 const { updateReviewSchedule } = require('../ai/forgettingCurve');
@@ -74,6 +75,14 @@ function scoreAttempt(quiz, answers) {
       isCorrect,
       pointsEarned:    pts,
       timeTaken:       submitted?.timeTaken || 0,
+      // BUGFIX: this was missing entirely, which meant the topicPerformance
+      // loop in submitAttempt() below (`ans.topics?.length ? ans.topics :
+      // (ans.topic ? [ans.topic] : [])`) always fell through to `[]` for
+      // every single answer — topicPerformance has been an empty object
+      // for every quiz result, regardless of whether questions had a topic
+      // set in the DB. That silently broke the "Weak Topics" breakdown UI
+      // and, as a result, the curated-resources feature that depends on it.
+      topic:           q.topic || '',
     };
   });
 
@@ -460,6 +469,20 @@ exports.submitAttempt = async (req, res) => {
   for (const t of Object.keys(topicPerformance)) {
     const { correct, total } = topicPerformance[t];
     topicPerformance[t].percentage = total > 0 ? Math.round((correct / total) * 100) : 0;
+  }
+
+  // ── Curated external resources for weak topics ───────────────────────────
+  // Alongside "refer this lesson," also surface real videos/articles for any
+  // topic below the quiz's passing score — e.g. "you're weak in Arrays,
+  // here's a video and an article on it." Internal lesson recs stay primary
+  // (they're the ones that feed progress tracking); these are supplementary.
+  // getTopicResources() returns [] for topics not yet in the curated
+  // library — frontend must treat that as "no resources yet," not an error.
+  const passThreshold = quiz.passingScore ?? 70;
+  for (const t of Object.keys(topicPerformance)) {
+    if (topicPerformance[t].percentage < passThreshold) {
+      topicPerformance[t].resources = getTopicResources(t, { limit: 3 });
+    }
   }
 
   // ── Forgetting curve — fire-and-forget (fast, non-blocking) ──────────────

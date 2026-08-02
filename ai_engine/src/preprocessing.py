@@ -10,6 +10,8 @@ from sklearn.preprocessing import StandardScaler
 import pickle
 import os
 
+from .feature_config import FEATURE_COLS
+
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 RAW_DATA_PATH      = os.path.join(BASE_DIR, "data", "raw", "interactions.csv")
 PROCESSED_DIR      = os.path.join(BASE_DIR, "data", "processed")
@@ -18,15 +20,13 @@ SCALER_PATH        = os.path.join(MODELS_DIR, "scaler.pkl")
 FEATURES_OUT_PATH  = os.path.join(PROCESSED_DIR, "student_features.csv")
 CLEAN_DATA_PATH    = os.path.join(PROCESSED_DIR, "interactions_clean.csv")
 
-FEATURE_COLS = [
-    "avg_quiz_score",
-    "avg_time_spent",
-    "total_errors",
-    "avg_accuracy",
-    "avg_time_efficiency",
-    "struggle_topics",
-    "topics_attempted",
-]
+# Days after which a topic's retention is considered to have decayed to
+# ~37% (1/e) for a student with an average (50%) quiz score. Higher-scoring
+# students decay slower, lower-scoring students decay faster — mirrors the
+# ease-factor logic in backend/ai/forgettingCurve.js (score >= 80 -> ease
+# 2.5 ... score < 40 -> ease 1.3), just expressed as a continuous half-life
+# instead of four discrete buckets.
+RETENTION_BASE_HALFLIFE_DAYS = 5.0
 
 
 def load_raw_data(path=RAW_DATA_PATH):
@@ -48,6 +48,15 @@ def clean_data(df):
     # Clamp scores to 0–100
     df["quiz_score"] = df["quiz_score"].clip(0, 100)
     df["attempts"]   = df["attempts"].clip(1, None)
+
+    # days_since_activity is new (added by mlBridgeService.exportInteractionsCSV
+    # for the retention-score feature). Older interactions.csv exports won't
+    # have this column, so default to 0 (= "practiced today") rather than
+    # error out — that's the conservative assumption and just means those
+    # rows get zero decay penalty until the CSV is re-exported.
+    if "days_since_activity" not in df.columns:
+        df["days_since_activity"] = 0
+    df["days_since_activity"] = df["days_since_activity"].fillna(0).clip(0, None)
     print(f"  Cleaned: {before} → {len(df)} rows")
     return df
 
@@ -64,7 +73,18 @@ def engineer_features(df):
     df["struggle_flag"] = (
         df["error_count"] / (df["attempts"] + 1) > 0.5
     ).astype(int)
-    print("  Engineered features: accuracy_rate, time_efficiency, struggle_flag")
+
+    # Retention score (recommendation-improvement item #3): Ebbinghaus
+    # exponential decay, R = e^(-t / S), where t = days since last practice
+    # and S = per-row stability derived from that row's own quiz score.
+    # A student who scored well on a topic forgets it more slowly (larger
+    # S -> slower decay) than one who scored poorly, matching the intuition
+    # already encoded in forgettingCurve.js's four ease-factor buckets.
+    # score 100 -> stability = 2x base halflife; score 0 -> 0.5x base.
+    stability_days = RETENTION_BASE_HALFLIFE_DAYS * (0.5 + df["quiz_score"] / 100.0)
+    df["retention_score"] = np.exp(-df["days_since_activity"] / stability_days)
+
+    print("  Engineered features: accuracy_rate, time_efficiency, struggle_flag, retention_score")
     return df
 
 
@@ -77,6 +97,7 @@ def build_student_feature_matrix(df):
         avg_time_efficiency = ("time_efficiency",    "mean"),
         struggle_topics     = ("struggle_flag",      "sum"),
         topics_attempted    = ("topic_id",           "nunique"),
+        avg_retention_score = ("retention_score",    "mean"),
     ).reset_index()
     print(f"  Built feature matrix: {len(agg)} students × {len(FEATURE_COLS)} features")
     return agg
