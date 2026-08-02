@@ -295,10 +295,17 @@ npm run build        # Production build
 | 8 | ✅ Done | AI recommendation engine (rule-based) |
 | 9 | ✅ Done | Explainable AI with reason factors |
 | 10 | ✅ Done | Student + Tutor + Admin dashboards |
-| 11 | 🔜 Next | Python ML model (scikit-learn clustering) |
-| 12 | 🔜 Next | File uploads (video, PDF) via Multer |
-| 13 | 🔜 Next | Email notifications |
-| 14 | 🔜 Next | Advanced analytics charts |
+| 11 | ✅ Done | Python ML model (KMeans clustering + collaborative filtering, SHAP/LIME) |
+| 12 | ✅ Done | File uploads (video, PDF) via Multer |
+| 13 | ✅ Done | Email notifications (recommendations, enrollment, quiz results, tutor applications) |
+| 14 | ✅ Done | Advanced analytics charts (Chart.js / Recharts) |
+| 15 | ✅ Done | Feedback signal folded into ML retraining (thumbs up/down now adjusts training data, not just live re-ranking) |
+| 16 | ✅ Done | Diversity re-ranking (caps per-topic recommendations so one weak topic can't crowd out others) |
+| 17 | ✅ Done | Retention/forgetting-curve feature in the ML model (Ebbinghaus-based recency signal) |
+| 18 | ✅ Done | LLM-enhanced natural-language explanations (Groq), with templated fallback |
+| 19 | 🔜 Next | CI pipeline (GitHub Actions: lint + test + build) |
+| 20 | 🔜 Next | Containerized local setup (Docker Compose: Mongo + backend + ML service + frontend) |
+| 21 | 🔜 Next | Live deployment (backend/ML on Render or Railway, frontend on Vercel, MongoDB Atlas) |
 
 ---
 
@@ -315,4 +322,3 @@ npm run build        # Production build
 - [ ] Deploy backend to Railway/Render/AWS
 
 ---
-
