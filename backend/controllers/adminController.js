@@ -153,4 +153,40 @@ module.exports = {
   toggleUserStatus,
   getAllCourses,
   getPerformanceOverview,
+  getWeakTopicsReport,
 };
+
+// ─────────────────────────────────────────────────────────────
+// GET /api/admin/weak-topics-report
+// Aggregates `weakTopics` across every QuizAttempt in the platform to rank
+// topics by how often students actually fail them — used to prioritize
+// which topics get curated external resources added to
+// ai_engine/data/raw/topic_resources.json next, instead of guessing.
+//
+// `weakTopics` has been correctly populated on every QuizAttempt since
+// scoreAttempt() was written (it reads q.topic directly from the quiz
+// question, independent of the topicPerformance/scoredAnswers bug fixed
+// separately) — so this works retroactively on existing historical data,
+// no migration needed.
+// ─────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────
+// GET /api/admin/weak-topics-report
+// Thin wrapper around topicResourceService.getCoverageReport() — see that
+// function for why it joins through Quiz.questions rather than
+// QuizAttempt.weakTopics (retroactive correctness across historical data).
+// ─────────────────────────────────────────────────────────────
+async function getWeakTopicsReport(req, res, next) {
+  try {
+    const { getCoverageReport } = require('../services/topicResourceService');
+    const report = await getCoverageReport();
+    const needsCuration = report.filter(r => !r.covered);
+
+    res.status(200).json({
+      success: true,
+      data: {
+        report,          // full list — uncovered topics first, then worst fail rate first
+        needsCuration,    // subset with no resources yet — the actual TODO list
+      },
+    });
+  } catch (error) { next(error); }
+}

@@ -481,7 +481,7 @@ exports.submitAttempt = async (req, res) => {
   const passThreshold = quiz.passingScore ?? 70;
   for (const t of Object.keys(topicPerformance)) {
     if (topicPerformance[t].percentage < passThreshold) {
-      topicPerformance[t].resources = getTopicResources(t, { limit: 3 });
+      topicPerformance[t].resources = await getTopicResources(t, { limit: 3 });
     }
   }
 

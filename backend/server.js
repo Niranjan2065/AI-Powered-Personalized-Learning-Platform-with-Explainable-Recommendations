@@ -26,6 +26,7 @@ const quizRoutes           = require('./routes/quizRoutes');
 const enrollmentRoutes     = require('./routes/enrollmentRoutes');
 const recommendationRoutes = require('./routes/recommendationRoutes');
 const resourceFeedbackRoutes = require('./routes/resourceFeedbackRoutes');
+const topicResourceSubmissionRoutes = require('./routes/topicResourceSubmissionRoutes');
 const adminRoutes          = require('./routes/adminRoutes');
 const tutorChatRoutes      = require('./routes/tutorChatRoutes');
 const devRoutes            = require('./routes/devRoutes');
@@ -107,6 +108,7 @@ app.use('/api/quizzes',         quizRoutes);
 app.use('/api/enrollments',     enrollmentRoutes);
 app.use('/api/recommendations', recommendationRoutes);
 app.use('/api/resource-feedback', resourceFeedbackRoutes);
+app.use('/api/tutor-resources', topicResourceSubmissionRoutes);
 app.use('/api/admin',           adminRoutes);
 app.use('/api/tutor-chat',      tutorChatRoutes);
 app.use('/api/applications',    applicationRoutes);   // ← Phase 4 addition

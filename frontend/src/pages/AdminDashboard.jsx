@@ -6,6 +6,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { toast } from "react-toastify";
 import Navbar from "../components/common/Navbar";
+import ResourceApprovalPanel from "../components/admin/ResourceApprovalPanel";
 import axios from "axios";
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis,
@@ -443,6 +444,7 @@ export default function AdminDashboard() {
             { id: "courses",      label: "📚 Courses"      },
             { id: "applications", label: "📋 Applications", badge: pendingCount },
             { id: "performance",  label: "🏆 Performance"  },
+            { id: "resources",    label: "📚 Resources"    },
           ].map(t => (
             <button key={t.id} onClick={() => setTab(t.id)}
               className={`btn btn-sm ${tab === t.id ? "btn-primary" : "btn-ghost"}`}
@@ -763,6 +765,11 @@ export default function AdminDashboard() {
                   )}
                 </div>
               </div>
+            )}
+
+            {/* ── Resources ── */}
+            {tab === "resources" && (
+              <ResourceApprovalPanel />
             )}
           </>
         )}

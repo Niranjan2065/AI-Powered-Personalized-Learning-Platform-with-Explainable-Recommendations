@@ -11,6 +11,7 @@ import React, { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
 import Navbar from "../components/common/Navbar";
+import ResourceSubmissionForm from "../components/teacher/ResourceSubmissionForm";
 import { useAuth } from "../context/AuthContext";
 import axios from "axios";
 import {
@@ -166,6 +167,9 @@ export default function TutorDashboard() {
             </div>
           ))}
         </div>
+
+        {/* Suggest a learning resource for a weak topic */}
+        <ResourceSubmissionForm />
 
         {/* Analytics Panel */}
         {!loading && courses.length > 0 && showAnalytics && (
