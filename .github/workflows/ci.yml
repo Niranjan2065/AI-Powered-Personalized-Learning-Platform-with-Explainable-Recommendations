@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  backend-tests:
+    name: Backend (Node/Jest) — recommendation engine logic
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npx jest ai/ --ci --coverage
+
+  ml-pipeline:
+    name: ML Engine (Python) — preprocessing → training → XAI smoke test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: ai_engine/requirements.txt
+
+      - name: Install ML dependencies
+        run: pip install -r ai_engine/requirements.txt
+
+      - name: Run full pipeline (preprocessing, training, recommendations, SHAP/LIME)
+        run: python scripts/run_pipeline.py
+
+      - name: Sanity-check ML service imports cleanly
+        run: |
+          pip install -r backend/ml_service/requirements.txt
+          python -c "
+          import sys, os
+          sys.path.insert(0, os.path.abspath('.'))
+          sys.path.insert(0, os.path.abspath('backend/ml_service'))
+          import app
+          print('ml_service app.py imported successfully')
+          "

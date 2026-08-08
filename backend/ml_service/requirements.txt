@@ -1,0 +1,6 @@
+# ml_service imports from ai_engine (pandas/numpy/sklearn/shap/lime/flask/flask-cors)
+# plus its own direct dependencies below. Install with:
+#   pip install -r ai_engine/requirements.txt -r backend/ml_service/requirements.txt
+-r ../../ai_engine/requirements.txt
+pymongo>=4.6.0
+python-dotenv>=1.0.0
