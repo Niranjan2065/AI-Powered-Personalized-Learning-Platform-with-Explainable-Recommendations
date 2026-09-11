@@ -1,0 +1,6 @@
+{
+  "n_students_sampled": 20,
+  "mean_top2_feature_agreement": 0.825,
+  "mean_shap_lime_spearman": 0.7333,
+  "mean_shap_stability_spearman": 0.8202
+}
