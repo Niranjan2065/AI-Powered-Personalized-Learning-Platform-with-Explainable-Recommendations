@@ -1,5 +1,51 @@
 {
-  "condition_a_knn_only": [
+  "random": [
+    {
+      "K": 3,
+      "Precision@K": 0.1546,
+      "Recall@K": 0.4639,
+      "NDCG@K": 0.3539,
+      "n_students_evaluated": 166
+    },
+    {
+      "K": 5,
+      "Precision@K": 0.1265,
+      "Recall@K": 0.6325,
+      "NDCG@K": 0.4234,
+      "n_students_evaluated": 166
+    },
+    {
+      "K": 10,
+      "Precision@K": 0.0867,
+      "Recall@K": 0.8675,
+      "NDCG@K": 0.4992,
+      "n_students_evaluated": 166
+    }
+  ],
+  "popularity": [
+    {
+      "K": 3,
+      "Precision@K": 0.1687,
+      "Recall@K": 0.506,
+      "NDCG@K": 0.3818,
+      "n_students_evaluated": 166
+    },
+    {
+      "K": 5,
+      "Precision@K": 0.1398,
+      "Recall@K": 0.6988,
+      "NDCG@K": 0.4619,
+      "n_students_evaluated": 166
+    },
+    {
+      "K": 10,
+      "Precision@K": 0.0922,
+      "Recall@K": 0.9217,
+      "NDCG@K": 0.5345,
+      "n_students_evaluated": 166
+    }
+  ],
+  "knn_alone": [
     {
       "K": 3,
       "Precision@K": 0.1707,
@@ -25,7 +71,7 @@
       "n_students_evaluated": 166
     }
   ],
-  "condition_b_kmeans_knn": [
+  "kmeans_knn": [
     {
       "K": 3,
       "Precision@K": 0.1627,
@@ -50,12 +96,5 @@
       "NDCG@K": 0.5242,
       "n_students_evaluated": 166
     }
-  ],
-  "wall_clock_ms": {
-    "knn_only": 770.7213000394404,
-    "kmeans_knn": 909.4857000745833
-  },
-  "n_eligible_students": 166,
-  "fallback_to_global_count": 0,
-  "caveat": "Dataset in this repo has only 7 students across 2 clusters (one cluster has a single member), so per-cluster neighbor pools are extremely small. Results here demonstrate the mechanism and evaluation protocol, not a statistically meaningful comparison \u2014 re-run on the full-scale dataset (200 students / 30 topics) before reporting in the paper."
+  ]
 }

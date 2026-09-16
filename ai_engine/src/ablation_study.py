@@ -17,6 +17,8 @@ import os
 import json
 import time
 
+from .cf_utils import mean_center, reconstruct_scores
+
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PROC_DIR = os.path.join(BASE_DIR, "data", "processed")
 MODELS_DIR = os.path.join(BASE_DIR, "models")
@@ -48,32 +50,34 @@ def get_eligible_students(stm):
     return eligible
 
 
-def neighbors_condition_a(stm, cf_model, masked_row, sid, n_neighbors):
-    """k-NN alone: global neighbor search, ignoring cluster membership."""
-    student_vec = masked_row.values.reshape(1, -1)
+def neighbors_condition_a(stm, centered, cf_model, masked_row, masked_row_centered, sid, n_neighbors):
+    """k-NN alone: global neighbor search on MEAN-CENTERED scores, ignoring
+    cluster membership."""
+    query_vec = masked_row_centered.values.reshape(1, -1)
     n = min(n_neighbors, len(stm))
-    distances, indices = cf_model.kneighbors(student_vec, n_neighbors=n)
+    distances, indices = cf_model.kneighbors(query_vec, n_neighbors=n)
     similar_ids = stm.index[indices[0]].tolist()
     similar_ids = [s for s in similar_ids if s != sid][: n_neighbors - 1]
     return similar_ids
 
 
-def neighbors_condition_b(stm, cf_by_cluster, student_cluster, masked_row, sid, n_neighbors,
-                           fallback_model):
-    """K-Means + k-NN: neighbor search restricted to the student's cluster.
-    Falls back to the global model (Condition A) if the cluster has < 2
-    members in the interaction matrix — an explicit, reported fallback
-    rather than a silent one."""
+def neighbors_condition_b(stm, centered, cf_by_cluster, student_cluster, masked_row,
+                           masked_row_centered, sid, n_neighbors, fallback_model):
+    """K-Means + k-NN: neighbor search restricted to the student's cluster,
+    on MEAN-CENTERED scores. Falls back to the global model (Condition A) if
+    the cluster has < 2 members in the interaction matrix — an explicit,
+    reported fallback rather than a silent one."""
     cluster_id = student_cluster.get(sid)
     entry = cf_by_cluster.get(cluster_id, {})
     model, member_ids = entry.get("model"), entry.get("student_ids", [])
 
     if model is None:
-        return neighbors_condition_a(stm, fallback_model, masked_row, sid, n_neighbors), True
+        return neighbors_condition_a(stm, centered, fallback_model, masked_row,
+                                      masked_row_centered, sid, n_neighbors), True
 
-    student_vec = masked_row.values.reshape(1, -1)
+    query_vec = masked_row_centered.values.reshape(1, -1)
     n = min(n_neighbors, len(member_ids))
-    distances, indices = model.kneighbors(student_vec, n_neighbors=n)
+    distances, indices = model.kneighbors(query_vec, n_neighbors=n)
     similar_ids = [member_ids[i] for i in indices[0] if member_ids[i] != sid][: n_neighbors - 1]
     return similar_ids, False
 
@@ -84,6 +88,7 @@ def evaluate(stm, neighbor_fn, k_values=K_VALUES, seed=SEED):
     n_neighbors = min(6, len(stm))
     eligible = get_eligible_students(stm)
     fallback_count = 0
+    centered, student_means = mean_center(stm)
 
     t0 = time.perf_counter()
     for sid in eligible:
@@ -93,16 +98,22 @@ def evaluate(stm, neighbor_fn, k_values=K_VALUES, seed=SEED):
 
         masked_row = row.copy()
         masked_row[held_out_topic] = 0.0
+        # recompute this student's centered query using the masked row, so
+        # the held-out topic can't leak into the student's own mean either
+        masked_attempted = masked_row > 0
+        masked_mean = masked_row[masked_attempted].mean() if masked_attempted.any() else 0.0
+        masked_row_centered = masked_row.sub(masked_mean).where(masked_attempted, 0)
 
-        similar_ids, used_fallback = neighbor_fn(sid, masked_row, n_neighbors)
+        similar_ids, used_fallback = neighbor_fn(sid, masked_row, masked_row_centered, n_neighbors)
         if used_fallback:
             fallback_count += 1
 
         done_topics = set(masked_row[masked_row > 0].index)
         if similar_ids:
-            candidate_scores = stm.loc[similar_ids].mean(axis=0)
+            neighbor_residuals = centered.loc[similar_ids].mean(axis=0)
+            candidate_scores = reconstruct_scores(neighbor_residuals, masked_mean)
         else:
-            candidate_scores = pd.Series(0.0, index=stm.columns)
+            candidate_scores = pd.Series(masked_mean, index=stm.columns)
         candidate_scores = candidate_scores.drop(index=list(done_topics), errors="ignore")
         ranked = candidate_scores.nlargest(max(k_values)).index.tolist()
 
@@ -148,7 +159,8 @@ def main():
     print("=" * 60)
     print("Condition A — k-NN alone (global, no cluster restriction)")
     print("=" * 60)
-    fn_a = lambda sid, masked_row, n: (neighbors_condition_a(stm, cf_model, masked_row, sid, n), False)
+    fn_a = lambda sid, masked_row, masked_row_centered, n: (
+        neighbors_condition_a(stm, None, cf_model, masked_row, masked_row_centered, sid, n), False)
     summary_a, time_a, _, n_elig = evaluate(stm, fn_a)
     df_a = pd.DataFrame(summary_a)
     print(df_a.to_string(index=False))
@@ -157,8 +169,8 @@ def main():
     print("=" * 60)
     print("Condition B — K-Means + k-NN (neighbor search restricted to cluster)")
     print("=" * 60)
-    fn_b = lambda sid, masked_row, n: neighbors_condition_b(
-        stm, cf_by_cluster, student_cluster, masked_row, sid, n, cf_model)
+    fn_b = lambda sid, masked_row, masked_row_centered, n: neighbors_condition_b(
+        stm, None, cf_by_cluster, student_cluster, masked_row, masked_row_centered, sid, n, cf_model)
     summary_b, time_b, fallback_count, _ = evaluate(stm, fn_b)
     df_b = pd.DataFrame(summary_b)
     print(df_b.to_string(index=False))

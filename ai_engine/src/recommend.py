@@ -13,6 +13,7 @@ import pickle
 import os
 
 from .feature_config import FEATURE_COLS
+from .cf_utils import mean_center, reconstruct_scores
 
 BASE_DIR   = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PROC_DIR   = os.path.join(BASE_DIR, "data", "processed")
@@ -22,6 +23,7 @@ CLUSTERED_PATH = os.path.join(PROC_DIR,   "student_features_clustered.csv")
 STM_PATH       = os.path.join(MODELS_DIR, "student_topic_matrix.csv")
 KMEANS_PATH    = os.path.join(MODELS_DIR, "kmeans.pkl")
 CF_MODEL_PATH  = os.path.join(MODELS_DIR, "cf_model.pkl")
+CF_MODEL_CLUSTER_PATH = os.path.join(MODELS_DIR, "cf_model_by_cluster.pkl")
 SCALER_PATH    = os.path.join(MODELS_DIR, "scaler.pkl")
 
 _cache = {}
@@ -32,14 +34,20 @@ def load_models():
     with open(KMEANS_PATH,    "rb") as f: _cache["kmeans"]    = pickle.load(f)
     with open(CF_MODEL_PATH,  "rb") as f: _cache["cf_model"]  = pickle.load(f)
     with open(SCALER_PATH,    "rb") as f: _cache["scaler"]    = pickle.load(f)
+    with open(CF_MODEL_CLUSTER_PATH, "rb") as f: _cache["cf_model_by_cluster"] = pickle.load(f)
     _cache["stm"] = pd.read_csv(STM_PATH, index_col="student_id")
     _cache["sf"]  = pd.read_csv(CLUSTERED_PATH)
     return _cache
 
 
-def get_recommendations(student_id, top_n=5):
+def get_recommendations(student_id, top_n=5, mode="kmeans_knn"):
+    """mode: 'kmeans_knn' (default, paper's proposed hybrid — neighbor search
+    restricted to the student's own cluster) or 'knn_only' (ablation baseline,
+    global neighbor search ignoring cluster membership)."""
     m = load_models()
-    kmeans, cf_model, stm, sf = m["kmeans"], m["cf_model"], m["stm"], m["sf"]
+    kmeans, cf_model, cf_by_cluster, stm, sf = (
+        m["kmeans"], m["cf_model"], m["cf_model_by_cluster"], m["stm"], m["sf"]
+    )
 
     student_row = sf[sf["student_id"] == student_id]
     if student_row.empty:
@@ -50,16 +58,38 @@ def get_recommendations(student_id, top_n=5):
 
     # ── Collaborative filter ──────────────────────────────────────────────────
     if student_id in stm.index:
-        student_vec = stm.loc[student_id].values.reshape(1, -1)
-        n_neighbors = min(6, len(stm))
-        distances, indices = cf_model.kneighbors(student_vec, n_neighbors=n_neighbors)
-        similar_ids = stm.index[indices[0][1:]].tolist()   # exclude self
+        centered, student_means = mean_center(stm)
+        my_mean = student_means[student_id]
+
+        cluster_entry = cf_by_cluster.get(cluster_id, {})
+        cluster_model = cluster_entry.get("model")
+        cluster_member_ids = cluster_entry.get("student_ids", [])
+
+        query_vec = centered.loc[student_id].values.reshape(1, -1)
+
+        if mode == "kmeans_knn" and cluster_model is not None:
+            # Condition B: neighbor search restricted to the student's cluster
+            n_neighbors = min(6, len(cluster_member_ids))
+            distances, indices = cluster_model.kneighbors(query_vec, n_neighbors=n_neighbors)
+            similar_ids = [cluster_member_ids[i] for i in indices[0]
+                           if cluster_member_ids[i] != student_id]
+        else:
+            # Condition A fallback: global k-NN (used directly in 'knn_only'
+            # mode, or automatically when the student's cluster has < 2
+            # members in the interaction matrix)
+            n_neighbors = min(6, len(stm))
+            distances, indices = cf_model.kneighbors(query_vec, n_neighbors=n_neighbors)
+            similar_ids = stm.index[indices[0][1:]].tolist()   # exclude self
 
         # Topics done by this student (score > 0)
         done_topics = set(stm.loc[student_id][stm.loc[student_id] > 0].index)
 
-        # Average scores of similar students, drop already-done topics
-        candidate_scores = stm.loc[similar_ids].mean(axis=0)
+        # Predicted score = this student's own mean + neighbours' mean residual
+        # (mean-centering removes overall-ability bias so similarity/scoring
+        # reflects relative topic-level strengths, not just "who scores high
+        # in general" — see cf_utils.py)
+        neighbor_residuals = centered.loc[similar_ids].mean(axis=0)
+        candidate_scores = reconstruct_scores(neighbor_residuals, my_mean)
         candidate_scores = candidate_scores.drop(index=list(done_topics), errors="ignore")
         recommended_topics = candidate_scores.nlargest(top_n).index.tolist()
 

@@ -1,0 +1,160 @@
+diff --git a/ai_engine/src/recommend.py b/ai_engine/src/recommend.py
+index f8583f9..ad27e93 100644
+--- a/ai_engine/src/recommend.py
++++ b/ai_engine/src/recommend.py
+@@ -22,6 +22,7 @@ CLUSTERED_PATH = os.path.join(PROC_DIR,   "student_features_clustered.csv")
+ STM_PATH       = os.path.join(MODELS_DIR, "student_topic_matrix.csv")
+ KMEANS_PATH    = os.path.join(MODELS_DIR, "kmeans.pkl")
+ CF_MODEL_PATH  = os.path.join(MODELS_DIR, "cf_model.pkl")
++CF_MODEL_CLUSTER_PATH = os.path.join(MODELS_DIR, "cf_model_by_cluster.pkl")
+ SCALER_PATH    = os.path.join(MODELS_DIR, "scaler.pkl")
+ 
+ _cache = {}
+@@ -32,14 +33,20 @@ def load_models():
+     with open(KMEANS_PATH,    "rb") as f: _cache["kmeans"]    = pickle.load(f)
+     with open(CF_MODEL_PATH,  "rb") as f: _cache["cf_model"]  = pickle.load(f)
+     with open(SCALER_PATH,    "rb") as f: _cache["scaler"]    = pickle.load(f)
++    with open(CF_MODEL_CLUSTER_PATH, "rb") as f: _cache["cf_model_by_cluster"] = pickle.load(f)
+     _cache["stm"] = pd.read_csv(STM_PATH, index_col="student_id")
+     _cache["sf"]  = pd.read_csv(CLUSTERED_PATH)
+     return _cache
+ 
+ 
+-def get_recommendations(student_id, top_n=5):
++def get_recommendations(student_id, top_n=5, mode="kmeans_knn"):
++    """mode: 'kmeans_knn' (default, paper's proposed hybrid — neighbor search
++    restricted to the student's own cluster) or 'knn_only' (ablation baseline,
++    global neighbor search ignoring cluster membership)."""
+     m = load_models()
+-    kmeans, cf_model, stm, sf = m["kmeans"], m["cf_model"], m["stm"], m["sf"]
++    kmeans, cf_model, cf_by_cluster, stm, sf = (
++        m["kmeans"], m["cf_model"], m["cf_model_by_cluster"], m["stm"], m["sf"]
++    )
+ 
+     student_row = sf[sf["student_id"] == student_id]
+     if student_row.empty:
+@@ -50,10 +57,25 @@ def get_recommendations(student_id, top_n=5):
+ 
+     # ── Collaborative filter ──────────────────────────────────────────────────
+     if student_id in stm.index:
+-        student_vec = stm.loc[student_id].values.reshape(1, -1)
+-        n_neighbors = min(6, len(stm))
+-        distances, indices = cf_model.kneighbors(student_vec, n_neighbors=n_neighbors)
+-        similar_ids = stm.index[indices[0][1:]].tolist()   # exclude self
++        cluster_entry = cf_by_cluster.get(cluster_id, {})
++        cluster_model = cluster_entry.get("model")
++        cluster_member_ids = cluster_entry.get("student_ids", [])
++
++        if mode == "kmeans_knn" and cluster_model is not None:
++            # Condition B: neighbor search restricted to the student's cluster
++            student_vec = stm.loc[student_id].values.reshape(1, -1)
++            n_neighbors = min(6, len(cluster_member_ids))
++            distances, indices = cluster_model.kneighbors(student_vec, n_neighbors=n_neighbors)
++            similar_ids = [cluster_member_ids[i] for i in indices[0]
++                           if cluster_member_ids[i] != student_id]
++        else:
++            # Condition A fallback: global k-NN (used directly in 'knn_only'
++            # mode, or automatically when the student's cluster has < 2
++            # members in the interaction matrix)
++            student_vec = stm.loc[student_id].values.reshape(1, -1)
++            n_neighbors = min(6, len(stm))
++            distances, indices = cf_model.kneighbors(student_vec, n_neighbors=n_neighbors)
++            similar_ids = stm.index[indices[0][1:]].tolist()   # exclude self
+ 
+         # Topics done by this student (score > 0)
+         done_topics = set(stm.loc[student_id][stm.loc[student_id] > 0].index)
+diff --git a/ai_engine/src/train_model.py b/ai_engine/src/train_model.py
+index 379a32f..5a070a1 100644
+--- a/ai_engine/src/train_model.py
++++ b/ai_engine/src/train_model.py
+@@ -27,6 +27,7 @@ CLUSTERED_PATH    = os.path.join(PROC_DIR,   "student_features_clustered.csv")
+ STM_PATH          = os.path.join(MODELS_DIR, "student_topic_matrix.csv")
+ KMEANS_PATH       = os.path.join(MODELS_DIR, "kmeans.pkl")
+ CF_MODEL_PATH     = os.path.join(MODELS_DIR, "cf_model.pkl")
++CF_MODEL_CLUSTER_PATH = os.path.join(MODELS_DIR, "cf_model_by_cluster.pkl")
+ 
+ 
+ # ── A: Clustering ─────────────────────────────────────────────────────────────
+@@ -76,6 +77,9 @@ def build_student_topic_matrix(interactions_df):
+ 
+ 
+ def train_collaborative_filter(student_topic_matrix, n_neighbors=5):
++    """Condition A (k-NN alone): one global neighbor model over all students,
++    ignoring cluster membership. Kept for backward compatibility and as the
++    ablation baseline."""
+     n = min(n_neighbors, len(student_topic_matrix))
+     model = NearestNeighbors(metric="cosine", algorithm="brute", n_neighbors=n)
+     model.fit(student_topic_matrix.values)
+@@ -83,6 +87,38 @@ def train_collaborative_filter(student_topic_matrix, n_neighbors=5):
+     return model
+ 
+ 
++def train_collaborative_filter_per_cluster(student_topic_matrix, student_clusters, n_neighbors=5):
++    """Condition B (K-Means + k-NN, as described in the paper): fit a separate
++    NearestNeighbors model per cluster, restricted to students in stm who
++    belong to that cluster. student_clusters: dict {student_id: cluster_id}.
++
++    Returns: {cluster_id: {"model": NearestNeighbors, "student_ids": [...]}}
++    Clusters with < 2 members in stm can't support in-cluster kNN; these are
++    flagged with "model": None so callers can fall back to the global model.
++    """
++    models_by_cluster = {}
++    stm_student_ids = set(student_topic_matrix.index)
++
++    clusters_present = sorted(set(student_clusters.get(sid) for sid in stm_student_ids
++                                   if sid in student_clusters))
++    for cluster_id in clusters_present:
++        member_ids = [sid for sid in student_topic_matrix.index
++                      if student_clusters.get(sid) == cluster_id]
++        if len(member_ids) < 2:
++            models_by_cluster[cluster_id] = {"model": None, "student_ids": member_ids}
++            print(f"  Cluster {cluster_id}: only {len(member_ids)} student(s) in "
++                  f"interaction matrix — too few for in-cluster kNN, will fall back to global model")
++            continue
++        sub_matrix = student_topic_matrix.loc[member_ids]
++        n = min(n_neighbors, len(member_ids))
++        model = NearestNeighbors(metric="cosine", algorithm="brute", n_neighbors=n)
++        model.fit(sub_matrix.values)
++        models_by_cluster[cluster_id] = {"model": model, "student_ids": member_ids}
++        print(f"  Cluster {cluster_id}: per-cluster collaborative filter trained "
++              f"(n_students={len(member_ids)}, n_neighbors={n})")
++    return models_by_cluster
++
++
+ # ── Main ──────────────────────────────────────────────────────────────────────
+ 
+ def train_and_save():
+@@ -98,23 +134,30 @@ def train_and_save():
+     print("\nBuilding student–topic matrix...")
+     student_topic_matrix = build_student_topic_matrix(interactions_df)
+ 
+-    print("\nTraining collaborative filter...")
++    print("\nTraining collaborative filter (Condition A: k-NN alone, global)...")
+     cf_model = train_collaborative_filter(student_topic_matrix)
+ 
++    print("\nTraining per-cluster collaborative filter (Condition B: K-Means + k-NN)...")
++    student_clusters = dict(zip(student_features["student_id"], student_features["cluster"]))
++    cf_model_by_cluster = train_collaborative_filter_per_cluster(student_topic_matrix, student_clusters)
++
+     # Save everything
+     with open(KMEANS_PATH, "wb") as f:
+         pickle.dump(kmeans, f)
+     with open(CF_MODEL_PATH, "wb") as f:
+         pickle.dump(cf_model, f)
++    with open(CF_MODEL_CLUSTER_PATH, "wb") as f:
++        pickle.dump(cf_model_by_cluster, f)
+     student_topic_matrix.to_csv(STM_PATH)
+     student_features.to_csv(CLUSTERED_PATH, index=False)
+ 
+     print(f"\n  Saved: {KMEANS_PATH}")
+-    print(f"  Saved: {CF_MODEL_PATH}")
++    print(f"  Saved: {CF_MODEL_PATH}  (global k-NN)")
++    print(f"  Saved: {CF_MODEL_CLUSTER_PATH}  (per-cluster k-NN)")
+     print(f"  Saved: {STM_PATH}")
+     print(f"  Saved: {CLUSTERED_PATH}")
+     print("\n[Training] Done.\n")
+-    return kmeans, cf_model, student_topic_matrix
++    return kmeans, cf_model, cf_model_by_cluster, student_topic_matrix
+ 
+ 
+ if __name__ == "__main__":

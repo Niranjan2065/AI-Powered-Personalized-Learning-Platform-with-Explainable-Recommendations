@@ -1,0 +1,75 @@
+{
+  "n_students_matched": 200,
+  "adjusted_rand_index": 0.6346,
+  "normalized_mutual_info": 0.7594,
+  "overall_weighted_purity": 0.76,
+  "contingency_matrix": {
+    "0": {
+      "diligent_slow": 0,
+      "disengaged": 24,
+      "fast_careless": 1,
+      "high_achiever": 0,
+      "inconsistent": 16,
+      "struggling": 1
+    },
+    "1": {
+      "diligent_slow": 31,
+      "disengaged": 0,
+      "fast_careless": 0,
+      "high_achiever": 0,
+      "inconsistent": 0,
+      "struggling": 0
+    },
+    "2": {
+      "diligent_slow": 0,
+      "disengaged": 0,
+      "fast_careless": 0,
+      "high_achiever": 33,
+      "inconsistent": 0,
+      "struggling": 0
+    },
+    "3": {
+      "diligent_slow": 0,
+      "disengaged": 0,
+      "fast_careless": 0,
+      "high_achiever": 0,
+      "inconsistent": 13,
+      "struggling": 24
+    },
+    "4": {
+      "diligent_slow": 0,
+      "disengaged": 1,
+      "fast_careless": 40,
+      "high_achiever": 0,
+      "inconsistent": 16,
+      "struggling": 0
+    }
+  },
+  "cluster_purity": {
+    "0": {
+      "n_students": 42,
+      "dominant_archetype": "disengaged",
+      "purity": 0.5714
+    },
+    "1": {
+      "n_students": 31,
+      "dominant_archetype": "diligent_slow",
+      "purity": 1.0
+    },
+    "2": {
+      "n_students": 33,
+      "dominant_archetype": "high_achiever",
+      "purity": 1.0
+    },
+    "3": {
+      "n_students": 37,
+      "dominant_archetype": "struggling",
+      "purity": 0.6486
+    },
+    "4": {
+      "n_students": 57,
+      "dominant_archetype": "fast_careless",
+      "purity": 0.7018
+    }
+  }
+}
