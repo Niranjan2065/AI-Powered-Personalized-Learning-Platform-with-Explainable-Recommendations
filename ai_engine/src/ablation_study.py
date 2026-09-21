@@ -17,6 +17,8 @@ import os
 import json
 import time
 
+from scipy.stats import wilcoxon
+
 from .cf_utils import mean_center, reconstruct_scores
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -85,6 +87,7 @@ def neighbors_condition_b(stm, centered, cf_by_cluster, student_cluster, masked_
 def evaluate(stm, neighbor_fn, k_values=K_VALUES, seed=SEED):
     rng = np.random.default_rng(seed)
     results = {k: {"precision_hits": 0, "recall_hits": 0, "ndcg_sum": 0.0, "n_eval": 0} for k in k_values}
+    per_student_recall10 = {}  # NEW: per-student Recall@10 (1/0), for paired significance testing
     n_neighbors = min(6, len(stm))
     eligible = get_eligible_students(stm)
     fallback_count = 0
@@ -119,6 +122,9 @@ def evaluate(stm, neighbor_fn, k_values=K_VALUES, seed=SEED):
 
         hit_rank = ranked.index(held_out_topic) + 1 if held_out_topic in ranked else None
 
+        # NEW: record this student's Recall@10 hit/miss for the significance test
+        per_student_recall10[sid] = 1 if held_out_topic in ranked[:10] else 0
+
         for k in k_values:
             top_k = ranked[:k]
             hit = held_out_topic in top_k
@@ -140,7 +146,8 @@ def evaluate(stm, neighbor_fn, k_values=K_VALUES, seed=SEED):
             "K": k, "Precision@K": round(precision, 4), "Recall@K": round(recall, 4),
             "HitRate@K": round(hit_rate, 4), "NDCG@K": round(ndcg, 4), "n_students_evaluated": n,
         })
-    return summary, elapsed, fallback_count, len(eligible)
+    # NEW: per_student_recall10 added to the return tuple
+    return summary, elapsed, fallback_count, len(eligible), per_student_recall10
 
 
 def main():
@@ -161,7 +168,7 @@ def main():
     print("=" * 60)
     fn_a = lambda sid, masked_row, masked_row_centered, n: (
         neighbors_condition_a(stm, None, cf_model, masked_row, masked_row_centered, sid, n), False)
-    summary_a, time_a, _, n_elig = evaluate(stm, fn_a)
+    summary_a, time_a, _, n_elig, recall10_a = evaluate(stm, fn_a)
     df_a = pd.DataFrame(summary_a)
     print(df_a.to_string(index=False))
     print(f"Wall-clock: {time_a*1000:.2f} ms  |  eligible students: {n_elig}\n")
@@ -171,12 +178,28 @@ def main():
     print("=" * 60)
     fn_b = lambda sid, masked_row, masked_row_centered, n: neighbors_condition_b(
         stm, None, cf_by_cluster, student_cluster, masked_row, masked_row_centered, sid, n, cf_model)
-    summary_b, time_b, fallback_count, _ = evaluate(stm, fn_b)
+    summary_b, time_b, fallback_count, _, recall10_b = evaluate(stm, fn_b)
     df_b = pd.DataFrame(summary_b)
     print(df_b.to_string(index=False))
     print(f"Wall-clock: {time_b*1000:.2f} ms  |  eligible students: {n_elig}  |  "
           f"fell back to global model: {fallback_count}/{n_elig} "
           f"(student's cluster had < 2 members in the interaction matrix)\n")
+
+    # NEW: paired Wilcoxon signed-rank test on per-student Recall@10
+    print("=" * 60)
+    print("Statistical significance test (Recall@10, paired)")
+    print("=" * 60)
+    common_ids = [sid for sid in recall10_a if sid in recall10_b]
+    a_vals = [recall10_a[sid] for sid in common_ids]
+    b_vals = [recall10_b[sid] for sid in common_ids]
+    diffs = np.array(a_vals) - np.array(b_vals)
+    if np.all(diffs == 0):
+        print(f"All {len(common_ids)} paired values identical — Wilcoxon undefined (p=1.0).")
+        stat, p = np.nan, 1.0
+    else:
+        stat, p = wilcoxon(a_vals, b_vals)
+        print(f"Wilcoxon signed-rank test (Recall@10, paired, n={len(common_ids)}): "
+              f"statistic={stat:.4f}, p={p:.4f}")
 
     # Side-by-side comparison table
     comparison = []
@@ -191,7 +214,7 @@ def main():
             "NDCG@K (KMeans+kNN)": b["NDCG@K"],
         })
     comp_df = pd.DataFrame(comparison)
-    print("=" * 60)
+    print("\n" + "=" * 60)
     print("Side-by-side comparison")
     print("=" * 60)
     print(comp_df.to_string(index=False))
@@ -206,6 +229,13 @@ def main():
             "wall_clock_ms": {"knn_only": time_a * 1000, "kmeans_knn": time_b * 1000},
             "n_eligible_students": n_elig,
             "fallback_to_global_count": fallback_count,
+            "significance_test": {
+                "metric": "Recall@10",
+                "test": "Wilcoxon signed-rank (paired)",
+                "n_paired": len(common_ids),
+                "statistic": None if np.isnan(stat) else float(stat),
+                "p_value": float(p),
+            },
             "caveat": ("Dataset in this repo has only 7 students across 2 clusters "
                        "(one cluster has a single member), so per-cluster neighbor "
                        "pools are extremely small. Results here demonstrate the "

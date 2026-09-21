@@ -52,10 +52,17 @@
     }
   ],
   "wall_clock_ms": {
-    "knn_only": 770.7213000394404,
-    "kmeans_knn": 909.4857000745833
+    "knn_only": 698.1921000042348,
+    "kmeans_knn": 935.1010999962455
   },
   "n_eligible_students": 166,
   "fallback_to_global_count": 0,
+  "significance_test": {
+    "metric": "Recall@10",
+    "test": "Wilcoxon signed-rank (paired)",
+    "n_paired": 166,
+    "statistic": 59.5,
+    "p_value": 0.6170750774519738
+  },
   "caveat": "Dataset in this repo has only 7 students across 2 clusters (one cluster has a single member), so per-cluster neighbor pools are extremely small. Results here demonstrate the mechanism and evaluation protocol, not a statistically meaningful comparison \u2014 re-run on the full-scale dataset (200 students / 30 topics) before reporting in the paper."
 }
