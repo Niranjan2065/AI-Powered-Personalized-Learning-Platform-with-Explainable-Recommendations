@@ -45,6 +45,9 @@ jobs:
       - name: Install ML dependencies
         run: pip install -r ai_engine/requirements.txt
 
+      - name: Unit tests
+        run: pip install pytest && python -m pytest ai_engine/tests -q
+
       - name: Run full pipeline (preprocessing, training, recommendations, SHAP/LIME)
         run: python scripts/run_pipeline.py
 

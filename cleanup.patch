@@ -1,0 +1,72 @@
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index 72129ac..cd7c93c 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -45,6 +45,9 @@ jobs:
+       - name: Install ML dependencies
+         run: pip install -r ai_engine/requirements.txt
+ 
++      - name: Unit tests
++        run: pip install pytest && python -m pytest ai_engine/tests -q
++
+       - name: Run full pipeline (preprocessing, training, recommendations, SHAP/LIME)
+         run: python scripts/run_pipeline.py
+ 
+diff --git a/.gitignore b/.gitignore
+index a610c1c..b1f6c99 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -26,3 +26,8 @@ Thumbs.db
+ .vscode/
+ .idea/
+ "*.patch" 
++
++# Python
++__pycache__/
++*.pyc
++.venv/
+diff --git a/ai_engine/requirements.txt b/ai_engine/requirements.txt
+index 17fbd4d..db6fa8f 100644
+--- a/ai_engine/requirements.txt
++++ b/ai_engine/requirements.txt
+@@ -5,3 +5,4 @@ shap>=0.44.0
+ lime>=0.2.0
+ flask>=3.0.0
+ flask-cors>=4.0.0
++scipy>=1.10.0
+diff --git a/ai_engine/tests/__init__.py b/ai_engine/tests/__init__.py
+new file mode 100644
+index 0000000..e69de29
+diff --git a/ai_engine/tests/test_core.py b/ai_engine/tests/test_core.py
+new file mode 100644
+index 0000000..94ed987
+--- /dev/null
++++ b/ai_engine/tests/test_core.py
+@@ -0,0 +1,27 @@
++import numpy as np, pandas as pd
++from ai_engine.src.ablation_study import ndcg_at_k, get_eligible_students
++from ai_engine.src.cf_utils import mean_center, reconstruct_scores
++
++
++def test_ndcg():
++    assert ndcg_at_k(1, 5) == 1.0
++    assert ndcg_at_k(None, 5) == 0.0
++    assert ndcg_at_k(6, 5) == 0.0
++    assert np.isclose(ndcg_at_k(3, 5), 0.5)
++
++
++def test_mean_center_preserves_sparsity():
++    stm = pd.DataFrame({"a": [80, 0], "b": [60, 50]}, index=["s1", "s2"])
++    c, m = mean_center(stm)
++    assert m["s1"] == 70 and c.loc["s1", "a"] == 10
++    assert c.loc["s2", "a"] == 0  # unattempted stays 0
++
++
++def test_reconstruct():
++    r = reconstruct_scores(pd.Series({"a": 5.0}), 70)
++    assert r["a"] == 75
++
++
++def test_eligibility():
++    stm = pd.DataFrame({"a": [80, 50, 90], "b": [60, 40, 0]}, index=["x", "y", "z"])
++    assert get_eligible_students(stm) == ["x"]  # y has no strong topic, z <2 attempts

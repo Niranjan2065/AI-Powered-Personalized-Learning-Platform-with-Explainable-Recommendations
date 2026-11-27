@@ -26,3 +26,8 @@ Thumbs.db
 .vscode/
 .idea/
 "*.patch" 
+
+# Python
+__pycache__/
+*.pyc
+.venv/
