@@ -1,0 +1,86 @@
+diff --git a/ai_engine/data/processed/fidelity_metrics.json b/ai_engine/data/processed/fidelity_metrics.json
+new file mode 100644
+index 0000000..fb8523c
+--- /dev/null
++++ b/ai_engine/data/processed/fidelity_metrics.json
+@@ -0,0 +1,12 @@
++{
++  "n_students": 40,
++  "SHAP_AOPC_mean": 0.2222,
++  "SHAP_AOPC_std": 0.1501,
++  "LIME_AOPC_mean": 0.2277,
++  "LIME_AOPC_std": 0.1473,
++  "Random_AOPC_mean": 0.1643,
++  "Random_AOPC_std": 0.1339,
++  "SHAP_vs_random_p": 0.0,
++  "LIME_vs_random_p": 0.0,
++  "SHAP_vs_LIME_p": 0.0014
++}
+\ No newline at end of file
+diff --git a/ai_engine/src/evaluate_fidelity.py b/ai_engine/src/evaluate_fidelity.py
+new file mode 100644
+index 0000000..6033c0b
+--- /dev/null
++++ b/ai_engine/src/evaluate_fidelity.py
+@@ -0,0 +1,61 @@
++"""
++Explanation fidelity (deletion test). For each sampled student, features are
++"deleted" (set to the population mean) in order of importance, and the drop in
++the model's cluster-membership probability is tracked. A faithful explanation
++removes the features that matter first, so its probability drops faster.
++Reported: AOPC (mean drop over k=1..n features) for SHAP, LIME and a random
++ordering baseline, plus a paired Wilcoxon test vs. random.
++
++Run: python -m ai_engine.src.evaluate_fidelity [--n 40]
++"""
++import argparse, json, os, pickle
++import numpy as np, pandas as pd
++from scipy.stats import wilcoxon
++
++from .feature_config import FEATURE_COLS
++from .evaluate_explainability import (_predict_fn, run_shap, run_lime,
++                                      CLUSTERED_PATH, KMEANS_PATH, PROC_DIR)
++
++
++def aopc(kmeans, x, order, cluster_id, mean_vec):
++    base = _predict_fn(kmeans, x[None])[0, cluster_id]
++    xs, drops = x.copy(), []
++    for j in order:
++        xs[j] = mean_vec[j]
++        drops.append(base - _predict_fn(kmeans, xs[None])[0, cluster_id])
++    return float(np.mean(drops))
++
++
++def main(n, seed=42):
++    sf = pd.read_csv(CLUSTERED_PATH)
++    kmeans = pickle.load(open(KMEANS_PATH, "rb"))
++    X = sf[FEATURE_COLS].values
++    mean_vec = X.mean(axis=0)
++    rng = np.random.default_rng(seed)
++    idx = rng.choice(len(sf), size=min(n, len(sf)), replace=False)
++
++    res = {"SHAP": [], "LIME": [], "Random": []}
++    for i in idx:
++        x = X[i]
++        cid = int(kmeans.predict(x[None])[0])
++        sv = run_shap(kmeans, X, x[None], cid, seed=seed)
++        lv = run_lime(kmeans, X, x, cid)
++        res["SHAP"].append(aopc(kmeans, x, np.argsort(-np.abs(sv)), cid, mean_vec))
++        res["LIME"].append(aopc(kmeans, x, np.argsort(-np.abs(lv)), cid, mean_vec))
++        res["Random"].append(np.mean([aopc(kmeans, x, rng.permutation(len(x)), cid, mean_vec)
++                                      for _ in range(20)]))
++
++    out = {"n_students": len(idx)}
++    for k, v in res.items():
++        out[f"{k}_AOPC_mean"] = round(float(np.mean(v)), 4)
++        out[f"{k}_AOPC_std"] = round(float(np.std(v, ddof=1)), 4)
++    for k in ("SHAP", "LIME"):
++        out[f"{k}_vs_random_p"] = round(float(wilcoxon(res[k], res["Random"]).pvalue), 6)
++    out["SHAP_vs_LIME_p"] = round(float(wilcoxon(res["SHAP"], res["LIME"]).pvalue), 4)
++    print(json.dumps(out, indent=2))
++    json.dump(out, open(os.path.join(PROC_DIR, "fidelity_metrics.json"), "w"), indent=2)
++
++
++if __name__ == "__main__":
++    ap = argparse.ArgumentParser(); ap.add_argument("--n", type=int, default=40)
++    main(ap.parse_args().n)

@@ -1,0 +1,328 @@
+diff --git a/.gitignore b/.gitignore
+index b1f6c99..f0254ea 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -31,3 +31,7 @@ Thumbs.db
+ __pycache__/
+ *.pyc
+ .venv/
++
++# OULAD raw data (download separately)
++ai_engine/data/external/
++ai_engine/models_oulad/
+diff --git a/ai_engine/src/ablation_study.py b/ai_engine/src/ablation_study.py
+index c3df0e0..a1c91c5 100644
+--- a/ai_engine/src/ablation_study.py
++++ b/ai_engine/src/ablation_study.py
+@@ -22,8 +22,12 @@ from scipy.stats import wilcoxon
+ from .cf_utils import mean_center, reconstruct_scores
+ 
+ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+-PROC_DIR = os.path.join(BASE_DIR, "data", "processed")
+-MODELS_DIR = os.path.join(BASE_DIR, "models")
++_DS = os.environ.get("EDU_DATASET", "")  # e.g. "oulad" -> data_oulad/, models_oulad/
++_DATA = f"data_{_DS}" if _DS else "data"
++_MODELS = f"models_{_DS}" if _DS else "models"
++
++PROC_DIR = os.path.join(BASE_DIR, _DATA, "processed")
++MODELS_DIR = os.path.join(BASE_DIR, _MODELS)
+ 
+ STM_PATH = os.path.join(MODELS_DIR, "student_topic_matrix.csv")
+ CF_MODEL_PATH = os.path.join(MODELS_DIR, "cf_model.pkl")
+diff --git a/ai_engine/src/baseline_recommenders.py b/ai_engine/src/baseline_recommenders.py
+index 9158ab2..549e066 100644
+--- a/ai_engine/src/baseline_recommenders.py
++++ b/ai_engine/src/baseline_recommenders.py
+@@ -20,8 +20,12 @@ import os
+ import json
+ 
+ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+-MODELS_DIR = os.path.join(BASE_DIR, "models")
+-PROC_DIR = os.path.join(BASE_DIR, "data", "processed")
++_DS = os.environ.get("EDU_DATASET", "")  # e.g. "oulad" -> data_oulad/, models_oulad/
++_DATA = f"data_{_DS}" if _DS else "data"
++_MODELS = f"models_{_DS}" if _DS else "models"
++
++MODELS_DIR = os.path.join(BASE_DIR, _MODELS)
++PROC_DIR = os.path.join(BASE_DIR, _DATA, "processed")
+ STM_PATH = os.path.join(MODELS_DIR, "student_topic_matrix.csv")
+ 
+ RELEVANCE_THRESHOLD = 70
+diff --git a/ai_engine/src/clustering_metrics.py b/ai_engine/src/clustering_metrics.py
+index 295a194..a3e52d5 100644
+--- a/ai_engine/src/clustering_metrics.py
++++ b/ai_engine/src/clustering_metrics.py
+@@ -16,7 +16,11 @@ import json
+ from .feature_config import FEATURE_COLS
+ 
+ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+-FEATURES_PATH = os.path.join(BASE_DIR, "data", "processed", "student_features.csv")
++_DS = os.environ.get("EDU_DATASET", "")  # e.g. "oulad" -> data_oulad/, models_oulad/
++_DATA = f"data_{_DS}" if _DS else "data"
++_MODELS = f"models_{_DS}" if _DS else "models"
++
++FEATURES_PATH = os.path.join(BASE_DIR, _DATA, "processed", "student_features.csv")
+ 
+ 
+ def evaluate_k_range(X, k_min=2, k_max=7, seed=42):
+@@ -55,11 +59,11 @@ def main():
+           f"(silhouette={best_row['silhouette_score']}, "
+           f"Davies-Bouldin={best_row['davies_bouldin_index']})")
+ 
+-    out_csv = os.path.join(BASE_DIR, "data", "processed", "clustering_metrics.csv")
++    out_csv = os.path.join(BASE_DIR, _DATA, "processed", "clustering_metrics.csv")
+     df.to_csv(out_csv, index=False)
+     print(f"\nSaved metrics table to: {out_csv}")
+ 
+-    out_json = os.path.join(BASE_DIR, "data", "processed", "clustering_metrics.json")
++    out_json = os.path.join(BASE_DIR, _DATA, "processed", "clustering_metrics.json")
+     with open(out_json, "w") as f:
+         json.dump(results, f, indent=2)
+     print(f"Saved metrics JSON to: {out_json}")
+diff --git a/ai_engine/src/evaluate_explainability.py b/ai_engine/src/evaluate_explainability.py
+index bbf848e..dcc0ade 100644
+--- a/ai_engine/src/evaluate_explainability.py
++++ b/ai_engine/src/evaluate_explainability.py
+@@ -26,8 +26,12 @@ from scipy.stats import spearmanr
+ from .feature_config import FEATURE_COLS, FEATURE_LABELS
+ 
+ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+-PROC_DIR = os.path.join(BASE_DIR, "data", "processed")
+-MODELS_DIR = os.path.join(BASE_DIR, "models")
++_DS = os.environ.get("EDU_DATASET", "")  # e.g. "oulad" -> data_oulad/, models_oulad/
++_DATA = f"data_{_DS}" if _DS else "data"
++_MODELS = f"models_{_DS}" if _DS else "models"
++
++PROC_DIR = os.path.join(BASE_DIR, _DATA, "processed")
++MODELS_DIR = os.path.join(BASE_DIR, _MODELS)
+ 
+ CLUSTERED_PATH = os.path.join(PROC_DIR, "student_features_clustered.csv")
+ KMEANS_PATH = os.path.join(MODELS_DIR, "kmeans.pkl")
+diff --git a/ai_engine/src/evaluate_recommendations.py b/ai_engine/src/evaluate_recommendations.py
+index 0cd75b7..26d905f 100644
+--- a/ai_engine/src/evaluate_recommendations.py
++++ b/ai_engine/src/evaluate_recommendations.py
+@@ -24,8 +24,12 @@ import os
+ import json
+ 
+ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+-PROC_DIR = os.path.join(BASE_DIR, "data", "processed")
+-MODELS_DIR = os.path.join(BASE_DIR, "models")
++_DS = os.environ.get("EDU_DATASET", "")  # e.g. "oulad" -> data_oulad/, models_oulad/
++_DATA = f"data_{_DS}" if _DS else "data"
++_MODELS = f"models_{_DS}" if _DS else "models"
++
++PROC_DIR = os.path.join(BASE_DIR, _DATA, "processed")
++MODELS_DIR = os.path.join(BASE_DIR, _MODELS)
+ 
+ STM_PATH = os.path.join(MODELS_DIR, "student_topic_matrix.csv")
+ CF_MODEL_PATH = os.path.join(MODELS_DIR, "cf_model.pkl")
+diff --git a/ai_engine/src/explain.py b/ai_engine/src/explain.py
+index 486dff7..ee8b006 100644
+--- a/ai_engine/src/explain.py
++++ b/ai_engine/src/explain.py
+@@ -13,8 +13,12 @@ import os
+ from .feature_config import FEATURE_COLS, FEATURE_LABELS
+ 
+ BASE_DIR   = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+-PROC_DIR   = os.path.join(BASE_DIR, "data", "processed")
+-MODELS_DIR = os.path.join(BASE_DIR, "models")
++_DS = os.environ.get("EDU_DATASET", "")  # e.g. "oulad" -> data_oulad/, models_oulad/
++_DATA = f"data_{_DS}" if _DS else "data"
++_MODELS = f"models_{_DS}" if _DS else "models"
++
++PROC_DIR   = os.path.join(BASE_DIR, _DATA, "processed")
++MODELS_DIR = os.path.join(BASE_DIR, _MODELS)
+ 
+ CLUSTERED_PATH = os.path.join(PROC_DIR,   "student_features_clustered.csv")
+ KMEANS_PATH    = os.path.join(MODELS_DIR, "kmeans.pkl")
+diff --git a/ai_engine/src/prepare_oulad.py b/ai_engine/src/prepare_oulad.py
+new file mode 100644
+index 0000000..250d24e
+--- /dev/null
++++ b/ai_engine/src/prepare_oulad.py
+@@ -0,0 +1,77 @@
++"""
++Adapter: OULAD -> the pipeline's interactions.csv (one module-presentation).
++
++Mapping (proxies are explicit; state them in the paper):
++  student_id           <- id_student
++  topic_id             <- id_assessment (TMA/CMA only; the final exam is excluded)
++  quiz_score           <- studentAssessment.score        (real)
++  attempts             <- 1 + studentInfo.num_of_prev_attempts   (real, module level)
++  time_spent_minutes   <- VLE clicks in the 14 days before the deadline (PROXY, 1 click = 1 unit)
++  days_since_activity  <- days from the last VLE click to the deadline (real, clipped at 0)
++  error_count          <- round((100 - score) / 20), range 0-5   (PROXY derived from score)
++
++Usage (from repo root):
++  python -m ai_engine.src.prepare_oulad [--module FFF --presentation 2014J]
++Default: the module-presentation with the most students who have scores.
++Output: ai_engine/data_oulad/raw/interactions.csv
++"""
++import argparse, os
++import numpy as np, pandas as pd
++
++BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
++SRC = os.path.join(BASE, "data", "external", "oulad")
++OUT = os.path.join(BASE, "data_oulad", "raw")
++WINDOW = 14
++
++
++def main(module=None, presentation=None, min_assess=3):
++    ass = pd.read_csv(os.path.join(SRC, "assessments.csv"))
++    sa = pd.read_csv(os.path.join(SRC, "studentAssessment.csv"))
++    info = pd.read_csv(os.path.join(SRC, "studentInfo.csv"))
++
++    ass = ass[ass.assessment_type.isin(["TMA", "CMA"]) & ass.date.notna()]
++    sa = sa.merge(ass, on="id_assessment").dropna(subset=["score"])
++
++    if module is None:
++        cnt = sa.groupby(["code_module", "code_presentation"]).id_student.nunique()
++        nass = ass.groupby(["code_module", "code_presentation"]).id_assessment.nunique()
++        cnt = cnt[nass.reindex(cnt.index).fillna(0) >= min_assess]
++        module, presentation = cnt.idxmax()
++        print(f"Auto-selected {module} {presentation} ({cnt.max()} students)")
++    sa = sa[(sa.code_module == module) & (sa.code_presentation == presentation)]
++
++    vle_cols = ["code_module", "code_presentation", "id_student", "date", "sum_click"]
++    parts = []
++    for ch in pd.read_csv(os.path.join(SRC, "studentVle.csv"), usecols=vle_cols, chunksize=2_000_000):
++        parts.append(ch[(ch.code_module == module) & (ch.code_presentation == presentation)])
++    vle = pd.concat(parts).groupby(["id_student", "date"], as_index=False).sum_click.sum()
++    print(f"VLE daily rows: {len(vle)}")
++
++    m = sa[["id_student", "id_assessment", "score", "date"]].rename(columns={"date": "due"})
++    j = m.merge(vle, on="id_student", how="left")
++    j = j[(j.date <= j.due)]
++    last = j.groupby(["id_student", "id_assessment"]).date.max().rename("last_date")
++    win = j[j.date > j.due - WINDOW].groupby(["id_student", "id_assessment"]).sum_click.sum().rename("clicks")
++    m = m.join(last, on=["id_student", "id_assessment"]).join(win, on=["id_student", "id_assessment"])
++
++    prev = info[(info.code_module == module) & (info.code_presentation == presentation)] \
++        .drop_duplicates("id_student").set_index("id_student").num_of_prev_attempts
++    out = pd.DataFrame({
++        "student_id": m.id_student,
++        "topic_id": m.id_assessment,
++        "quiz_score": m.score.clip(0, 100),
++        "time_spent_minutes": m.clicks.fillna(0).astype(float),
++        "error_count": ((100 - m.score.clip(0, 100)) / 20).round().astype(int),
++        "attempts": 1 + m.id_student.map(prev).fillna(0).astype(int),
++        "days_since_activity": (m.due - m.last_date).fillna(WINDOW).clip(lower=0),
++    })
++    os.makedirs(OUT, exist_ok=True)
++    out.to_csv(os.path.join(OUT, "interactions.csv"), index=False)
++    print(f"Saved {len(out)} rows | {out.student_id.nunique()} students | "
++          f"{out.topic_id.nunique()} topics -> {OUT}")
++
++
++if __name__ == "__main__":
++    ap = argparse.ArgumentParser()
++    ap.add_argument("--module"); ap.add_argument("--presentation")
++    a = ap.parse_args(); main(a.module, a.presentation)
+diff --git a/ai_engine/src/preprocessing.py b/ai_engine/src/preprocessing.py
+index 19536c3..e8968fe 100644
+--- a/ai_engine/src/preprocessing.py
++++ b/ai_engine/src/preprocessing.py
+@@ -13,9 +13,13 @@ import os
+ from .feature_config import FEATURE_COLS
+ 
+ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+-RAW_DATA_PATH      = os.path.join(BASE_DIR, "data", "raw", "interactions.csv")
+-PROCESSED_DIR      = os.path.join(BASE_DIR, "data", "processed")
+-MODELS_DIR         = os.path.join(BASE_DIR, "models")
++_DS = os.environ.get("EDU_DATASET", "")  # e.g. "oulad" -> data_oulad/, models_oulad/
++_DATA = f"data_{_DS}" if _DS else "data"
++_MODELS = f"models_{_DS}" if _DS else "models"
++
++RAW_DATA_PATH      = os.path.join(BASE_DIR, _DATA, "raw", "interactions.csv")
++PROCESSED_DIR      = os.path.join(BASE_DIR, _DATA, "processed")
++MODELS_DIR         = os.path.join(BASE_DIR, _MODELS)
+ SCALER_PATH        = os.path.join(MODELS_DIR, "scaler.pkl")
+ FEATURES_OUT_PATH  = os.path.join(PROCESSED_DIR, "student_features.csv")
+ CLEAN_DATA_PATH    = os.path.join(PROCESSED_DIR, "interactions_clean.csv")
+diff --git a/ai_engine/src/recommend.py b/ai_engine/src/recommend.py
+index 6bd7bd2..dfae8c8 100644
+--- a/ai_engine/src/recommend.py
++++ b/ai_engine/src/recommend.py
+@@ -16,8 +16,12 @@ from .feature_config import FEATURE_COLS
+ from .cf_utils import mean_center, reconstruct_scores
+ 
+ BASE_DIR   = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+-PROC_DIR   = os.path.join(BASE_DIR, "data", "processed")
+-MODELS_DIR = os.path.join(BASE_DIR, "models")
++_DS = os.environ.get("EDU_DATASET", "")  # e.g. "oulad" -> data_oulad/, models_oulad/
++_DATA = f"data_{_DS}" if _DS else "data"
++_MODELS = f"models_{_DS}" if _DS else "models"
++
++PROC_DIR   = os.path.join(BASE_DIR, _DATA, "processed")
++MODELS_DIR = os.path.join(BASE_DIR, _MODELS)
+ 
+ CLUSTERED_PATH = os.path.join(PROC_DIR,   "student_features_clustered.csv")
+ STM_PATH       = os.path.join(MODELS_DIR, "student_topic_matrix.csv")
+diff --git a/ai_engine/src/train_model.py b/ai_engine/src/train_model.py
+index 9b75643..8b74732 100644
+--- a/ai_engine/src/train_model.py
++++ b/ai_engine/src/train_model.py
+@@ -19,8 +19,12 @@ from .feature_config import FEATURE_COLS
+ from .cf_utils import mean_center
+ 
+ BASE_DIR   = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+-PROC_DIR   = os.path.join(BASE_DIR, "data", "processed")
+-MODELS_DIR = os.path.join(BASE_DIR, "models")
++_DS = os.environ.get("EDU_DATASET", "")  # e.g. "oulad" -> data_oulad/, models_oulad/
++_DATA = f"data_{_DS}" if _DS else "data"
++_MODELS = f"models_{_DS}" if _DS else "models"
++
++PROC_DIR   = os.path.join(BASE_DIR, _DATA, "processed")
++MODELS_DIR = os.path.join(BASE_DIR, _MODELS)
+ 
+ FEATURES_PATH     = os.path.join(PROC_DIR,   "student_features.csv")
+ CLEAN_DATA_PATH   = os.path.join(PROC_DIR,   "interactions_clean.csv")
+diff --git a/ai_engine/src/validate_clusters.py b/ai_engine/src/validate_clusters.py
+index 73bcb76..3515402 100644
+--- a/ai_engine/src/validate_clusters.py
++++ b/ai_engine/src/validate_clusters.py
+@@ -17,8 +17,12 @@ import json
+ from sklearn.metrics import adjusted_rand_score, normalized_mutual_info_score
+ 
+ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+-RAW_DIR = os.path.join(BASE_DIR, "data", "raw")
+-PROC_DIR = os.path.join(BASE_DIR, "data", "processed")
++_DS = os.environ.get("EDU_DATASET", "")  # e.g. "oulad" -> data_oulad/, models_oulad/
++_DATA = f"data_{_DS}" if _DS else "data"
++_MODELS = f"models_{_DS}" if _DS else "models"
++
++RAW_DIR = os.path.join(BASE_DIR, _DATA, "raw")
++PROC_DIR = os.path.join(BASE_DIR, _DATA, "processed")
+ 
+ ARCHETYPE_PATH = os.path.join(RAW_DIR, "student_archetypes_ground_truth.csv")
+ CLUSTERED_PATH = os.path.join(PROC_DIR, "student_features_clustered.csv")
+diff --git a/scripts/run_oulad.py b/scripts/run_oulad.py
+new file mode 100644
+index 0000000..9ddec63
+--- /dev/null
++++ b/scripts/run_oulad.py
+@@ -0,0 +1,23 @@
++"""Run the full pipeline + evaluations on OULAD (outputs to data_oulad/, models_oulad/).
++Prereq: OULAD CSVs in ai_engine/data/external/oulad/.  Run from repo root:
++  python scripts/run_oulad.py
++"""
++import os, sys, subprocess
++os.environ["EDU_DATASET"] = "oulad"
++sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
++
++steps = [
++    "ai_engine.src.prepare_oulad",
++    "ai_engine.src.preprocessing",
++    "ai_engine.src.train_model",
++    "ai_engine.src.clustering_metrics",
++    "ai_engine.src.ablation_study",
++    "ai_engine.src.baseline_recommenders",
++    "ai_engine.src.ablation_multiseed",
++    "ai_engine.src.evaluate_fidelity",
++]
++for m in steps:
++    print(f"\n===== {m} =====", flush=True)
++    r = subprocess.run([sys.executable, "-m", m], env=os.environ)
++    if r.returncode:
++        sys.exit(f"FAILED at {m}")
