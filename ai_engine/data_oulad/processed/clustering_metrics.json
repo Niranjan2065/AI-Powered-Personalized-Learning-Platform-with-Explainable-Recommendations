@@ -1,0 +1,44 @@
+[
+  {
+    "k": 2,
+    "silhouette_score": 0.2891,
+    "davies_bouldin_index": 1.4534,
+    "calinski_harabasz_score": 735.19,
+    "inertia": 11681.39
+  },
+  {
+    "k": 3,
+    "silhouette_score": 0.2977,
+    "davies_bouldin_index": 1.2977,
+    "calinski_harabasz_score": 663.87,
+    "inertia": 9596.92
+  },
+  {
+    "k": 4,
+    "silhouette_score": 0.311,
+    "davies_bouldin_index": 1.1488,
+    "calinski_harabasz_score": 614.93,
+    "inertia": 8302.65
+  },
+  {
+    "k": 5,
+    "silhouette_score": 0.2508,
+    "davies_bouldin_index": 1.3144,
+    "calinski_harabasz_score": 573.31,
+    "inertia": 7432.21
+  },
+  {
+    "k": 6,
+    "silhouette_score": 0.262,
+    "davies_bouldin_index": 1.192,
+    "calinski_harabasz_score": 558.19,
+    "inertia": 6657.0
+  },
+  {
+    "k": 7,
+    "silhouette_score": 0.27,
+    "davies_bouldin_index": 1.1317,
+    "calinski_harabasz_score": 559.14,
+    "inertia": 5953.07
+  }
+]

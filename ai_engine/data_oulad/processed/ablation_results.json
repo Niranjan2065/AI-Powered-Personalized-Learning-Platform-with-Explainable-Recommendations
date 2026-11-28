@@ -1,0 +1,68 @@
+{
+  "condition_a_knn_only": [
+    {
+      "K": 1,
+      "Precision@K": 0.6978,
+      "Recall@K": 0.6978,
+      "HitRate@K": 0.6978,
+      "NDCG@K": 0.6978,
+      "n_students_evaluated": 1486
+    },
+    {
+      "K": 2,
+      "Precision@K": 0.4159,
+      "Recall@K": 0.8318,
+      "HitRate@K": 0.8318,
+      "NDCG@K": 0.7823,
+      "n_students_evaluated": 1486
+    },
+    {
+      "K": 3,
+      "Precision@K": 0.2903,
+      "Recall@K": 0.8708,
+      "HitRate@K": 0.8708,
+      "NDCG@K": 0.8019,
+      "n_students_evaluated": 1486
+    }
+  ],
+  "condition_b_kmeans_knn": [
+    {
+      "K": 1,
+      "Precision@K": 0.7705,
+      "Recall@K": 0.7705,
+      "HitRate@K": 0.7705,
+      "NDCG@K": 0.7705,
+      "n_students_evaluated": 1486
+    },
+    {
+      "K": 2,
+      "Precision@K": 0.426,
+      "Recall@K": 0.852,
+      "HitRate@K": 0.852,
+      "NDCG@K": 0.8219,
+      "n_students_evaluated": 1486
+    },
+    {
+      "K": 3,
+      "Precision@K": 0.2979,
+      "Recall@K": 0.8937,
+      "HitRate@K": 0.8937,
+      "NDCG@K": 0.8428,
+      "n_students_evaluated": 1486
+    }
+  ],
+  "wall_clock_ms": {
+    "knn_only": 8813.078899984248,
+    "kmeans_knn": 8333.410699968226
+  },
+  "n_eligible_students": 1486,
+  "fallback_to_global_count": 0,
+  "significance_test": {
+    "metric": "Recall@10",
+    "test": "Wilcoxon signed-rank (paired)",
+    "n_paired": 1486,
+    "statistic": 3391.5,
+    "p_value": 0.009023438818080317
+  },
+  "caveat": "Dataset in this repo has only 7 students across 2 clusters (one cluster has a single member), so per-cluster neighbor pools are extremely small. Results here demonstrate the mechanism and evaluation protocol, not a statistically meaningful comparison \u2014 re-run on the full-scale dataset (200 students / 30 topics) before reporting in the paper."
+}

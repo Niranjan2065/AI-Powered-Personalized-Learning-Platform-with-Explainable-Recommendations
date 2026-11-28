@@ -16,8 +16,12 @@ from .feature_config import FEATURE_COLS
 from .cf_utils import mean_center, reconstruct_scores
 
 BASE_DIR   = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-PROC_DIR   = os.path.join(BASE_DIR, "data", "processed")
-MODELS_DIR = os.path.join(BASE_DIR, "models")
+_DS = os.environ.get("EDU_DATASET", "")  # e.g. "oulad" -> data_oulad/, models_oulad/
+_DATA = f"data_{_DS}" if _DS else "data"
+_MODELS = f"models_{_DS}" if _DS else "models"
+
+PROC_DIR   = os.path.join(BASE_DIR, _DATA, "processed")
+MODELS_DIR = os.path.join(BASE_DIR, _MODELS)
 
 CLUSTERED_PATH = os.path.join(PROC_DIR,   "student_features_clustered.csv")
 STM_PATH       = os.path.join(MODELS_DIR, "student_topic_matrix.csv")

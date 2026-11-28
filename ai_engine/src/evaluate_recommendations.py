@@ -24,14 +24,19 @@ import os
 import json
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-PROC_DIR = os.path.join(BASE_DIR, "data", "processed")
-MODELS_DIR = os.path.join(BASE_DIR, "models")
+_DS = os.environ.get("EDU_DATASET", "")  # e.g. "oulad" -> data_oulad/, models_oulad/
+_DATA = f"data_{_DS}" if _DS else "data"
+_MODELS = f"models_{_DS}" if _DS else "models"
+
+PROC_DIR = os.path.join(BASE_DIR, _DATA, "processed")
+MODELS_DIR = os.path.join(BASE_DIR, _MODELS)
 
 STM_PATH = os.path.join(MODELS_DIR, "student_topic_matrix.csv")
 CF_MODEL_PATH = os.path.join(MODELS_DIR, "cf_model.pkl")
 
 RELEVANCE_THRESHOLD = 70  # quiz_score >= 70 counts as "a topic worth recommending"
-K_VALUES = [3, 5, 10]
+K_VALUES = [3, 5, 10] if not _DS else [1, 2, 3]  # OULAD has only ~8 topics
+SIG_K = 10 if not _DS else 2  # K used for the paired significance test
 SEED = 42
 
 

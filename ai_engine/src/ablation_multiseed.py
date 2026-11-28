@@ -11,7 +11,7 @@ import argparse, json, pickle
 import numpy as np, pandas as pd
 from scipy.stats import wilcoxon
 
-from .ablation_study import (STM_PATH, CF_MODEL_PATH, CF_MODEL_CLUSTER_PATH,
+from .ablation_study import (SIG_K, STM_PATH, CF_MODEL_PATH, CF_MODEL_CLUSTER_PATH,
                              CLUSTERED_PATH, PROC_DIR, K_VALUES, evaluate,
                              neighbors_condition_a, neighbors_condition_b)
 import os
@@ -54,8 +54,8 @@ def main(n_seeds):
     boots = [rng.choice(d, len(d)).mean() for _ in range(5000)]
     ci = np.percentile(boots, [2.5, 97.5])
     p = 1.0 if np.all(d == 0) else wilcoxon(pa, pb).pvalue
-    print(f"\nRecall@10 A-B diff: {d.mean():+.4f}  95% CI [{ci[0]:+.4f}, {ci[1]:+.4f}]  Wilcoxon p={p:.4f}")
-    out["recall10_diff"] = {"mean": d.mean(), "ci95": ci.tolist(), "wilcoxon_p": float(p), "n_students": len(d)}
+    print(f"\nRecall@{SIG_K} A-B diff: {d.mean():+.4f}  95% CI [{ci[0]:+.4f}, {ci[1]:+.4f}]  Wilcoxon p={p:.4f}")
+    out[f"recall{SIG_K}_diff"] = {"mean": d.mean(), "ci95": ci.tolist(), "wilcoxon_p": float(p), "n_students": len(d)}
 
     df.to_csv(os.path.join(PROC_DIR, "ablation_multiseed.csv"), index=False)
     with open(os.path.join(PROC_DIR, "ablation_multiseed.json"), "w") as f:

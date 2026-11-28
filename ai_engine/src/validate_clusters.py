@@ -17,8 +17,12 @@ import json
 from sklearn.metrics import adjusted_rand_score, normalized_mutual_info_score
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-RAW_DIR = os.path.join(BASE_DIR, "data", "raw")
-PROC_DIR = os.path.join(BASE_DIR, "data", "processed")
+_DS = os.environ.get("EDU_DATASET", "")  # e.g. "oulad" -> data_oulad/, models_oulad/
+_DATA = f"data_{_DS}" if _DS else "data"
+_MODELS = f"models_{_DS}" if _DS else "models"
+
+RAW_DIR = os.path.join(BASE_DIR, _DATA, "raw")
+PROC_DIR = os.path.join(BASE_DIR, _DATA, "processed")
 
 ARCHETYPE_PATH = os.path.join(RAW_DIR, "student_archetypes_ground_truth.csv")
 CLUSTERED_PATH = os.path.join(PROC_DIR, "student_features_clustered.csv")

@@ -22,8 +22,12 @@ from scipy.stats import wilcoxon
 from .cf_utils import mean_center, reconstruct_scores
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-PROC_DIR = os.path.join(BASE_DIR, "data", "processed")
-MODELS_DIR = os.path.join(BASE_DIR, "models")
+_DS = os.environ.get("EDU_DATASET", "")  # e.g. "oulad" -> data_oulad/, models_oulad/
+_DATA = f"data_{_DS}" if _DS else "data"
+_MODELS = f"models_{_DS}" if _DS else "models"
+
+PROC_DIR = os.path.join(BASE_DIR, _DATA, "processed")
+MODELS_DIR = os.path.join(BASE_DIR, _MODELS)
 
 STM_PATH = os.path.join(MODELS_DIR, "student_topic_matrix.csv")
 CF_MODEL_PATH = os.path.join(MODELS_DIR, "cf_model.pkl")
@@ -31,7 +35,8 @@ CF_MODEL_CLUSTER_PATH = os.path.join(MODELS_DIR, "cf_model_by_cluster.pkl")
 CLUSTERED_PATH = os.path.join(PROC_DIR, "student_features_clustered.csv")
 
 RELEVANCE_THRESHOLD = 70
-K_VALUES = [3, 5, 10]
+K_VALUES = [3, 5, 10] if not _DS else [1, 2, 3]  # OULAD has only ~8 topics
+SIG_K = 10 if not _DS else 2  # K used for the paired significance test
 SEED = 42
 
 
@@ -123,7 +128,7 @@ def evaluate(stm, neighbor_fn, k_values=K_VALUES, seed=SEED):
         hit_rank = ranked.index(held_out_topic) + 1 if held_out_topic in ranked else None
 
         # NEW: record this student's Recall@10 hit/miss for the significance test
-        per_student_recall10[sid] = 1 if held_out_topic in ranked[:10] else 0
+        per_student_recall10[sid] = 1 if held_out_topic in ranked[:SIG_K] else 0
 
         for k in k_values:
             top_k = ranked[:k]

@@ -16,7 +16,11 @@ import json
 from .feature_config import FEATURE_COLS
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-FEATURES_PATH = os.path.join(BASE_DIR, "data", "processed", "student_features.csv")
+_DS = os.environ.get("EDU_DATASET", "")  # e.g. "oulad" -> data_oulad/, models_oulad/
+_DATA = f"data_{_DS}" if _DS else "data"
+_MODELS = f"models_{_DS}" if _DS else "models"
+
+FEATURES_PATH = os.path.join(BASE_DIR, _DATA, "processed", "student_features.csv")
 
 
 def evaluate_k_range(X, k_min=2, k_max=7, seed=42):
@@ -55,11 +59,11 @@ def main():
           f"(silhouette={best_row['silhouette_score']}, "
           f"Davies-Bouldin={best_row['davies_bouldin_index']})")
 
-    out_csv = os.path.join(BASE_DIR, "data", "processed", "clustering_metrics.csv")
+    out_csv = os.path.join(BASE_DIR, _DATA, "processed", "clustering_metrics.csv")
     df.to_csv(out_csv, index=False)
     print(f"\nSaved metrics table to: {out_csv}")
 
-    out_json = os.path.join(BASE_DIR, "data", "processed", "clustering_metrics.json")
+    out_json = os.path.join(BASE_DIR, _DATA, "processed", "clustering_metrics.json")
     with open(out_json, "w") as f:
         json.dump(results, f, indent=2)
     print(f"Saved metrics JSON to: {out_json}")

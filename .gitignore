@@ -31,3 +31,7 @@ Thumbs.db
 __pycache__/
 *.pyc
 .venv/
+
+# OULAD raw data (download separately)
+ai_engine/data/external/
+ai_engine/models_oulad/

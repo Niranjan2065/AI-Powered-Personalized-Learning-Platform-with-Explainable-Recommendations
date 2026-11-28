@@ -1,0 +1,12 @@
+{
+  "n_students": 40,
+  "SHAP_AOPC_mean": 0.2222,
+  "SHAP_AOPC_std": 0.1501,
+  "LIME_AOPC_mean": 0.2277,
+  "LIME_AOPC_std": 0.1473,
+  "Random_AOPC_mean": 0.1643,
+  "Random_AOPC_std": 0.1339,
+  "SHAP_vs_random_p": 0.0,
+  "LIME_vs_random_p": 0.0,
+  "SHAP_vs_LIME_p": 0.0014
+}
